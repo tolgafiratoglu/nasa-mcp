@@ -1,0 +1,61 @@
+---
+description: NASA MCP — kod yaz; section sonunda en fazla 1 mocked pytest; live/E2E sana bırak
+alwaysApply: true
+---
+
+# NASA Mission Control MCP — Çalışma Kuralları
+
+## Kod yazarken
+
+1. Bir kod talep edildiğinde **sadece anlaştığımız kodu yaz**.
+2. **Mocked unit/contract testleri yazabilirsin** (`pytest`, `httpx2.MockTransport`, `Client(mcp)`).
+3. **Test çalıştırma limiti:** Section (veya istenen iş) bitince **en fazla 1** mocked `pytest -q` çalıştır.
+   - Fail olursa kodu düzelt; **tekrar pytest koşma** — komutu kullanıcıya bırak.
+   - Fail-fix-retry döngüsü yok.
+4. **Yapma:**
+   - live NASA API çağrısı
+   - MCP Inspector başlatma
+   - NASA API quota tüketme
+   - dış servis değişikliği
+   - gereksiz / tekrarlayan terminal komutları
+5. Klasör oluşturma dışında gereksiz terminal komutu çalıştırma.
+6. Kod tekrarı yapma. Yeni client/tool yazmadan önce `BaseNASAClient`, mevcut client'lar ve `models.py` kontrol et.
+7. Spec (`spec.md`) ve plan (`planning.md`) dışına çıkma. MVP dışı özellik ekleme (EPIC, Media Library, frontend, Redis, Streamable HTTP, MRTR).
+8. SOLID prensibine uygun kod yaz.
+
+## İş bitince cevabı şu sırayla ver
+
+### 1. Değiştirilen / oluşturulan dosyalar
+
+Kod bloklarını **linklenebilir** şekilde yaz (dosya yolu + satır aralığı):
+
+```12:34:src/nasa_mcp/server.py
+# ilgili kod
+```
+
+### 2. Doğrulama komutları
+
+Mocked testler: Agent **en fazla 1 kez** çalıştırabilir. Live/E2E ve tekrar koşular **sen**:
+
+```bash
+# Bağımlılıklar
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Mocked tests (Agent: section başına en fazla 1; sen istediğin kadar)
+python -m pytest tests/test_clients.py -q
+
+# MCP Inspector (sen çalıştırırsın)
+mcp dev src/nasa_mcp/server.py
+```
+
+### 3. MCP / tool doğrulama
+
+Tool çağrıları için parametre örnekleri yaz:
+
+```text
+Tool: search_asteroids
+Args: { "start_date": "2024-01-01", "end_date": "2024-01-07", "hazardous_only": true }
+```
+
+`.env` / `NASA_API_KEY` gerektiğinde hatırlat (`DEMO_KEY` veya kayıtlı key).
