@@ -1,158 +1,158 @@
 # NASA Mission Control MCP — Plan
 
-> Kaynak: `spec.md`  
-> Kural: `.cursor/rules/nasa-mcp.mdc`  
-> Amaç: Mevcut MVP iskeletini harden edip, portföy/demo seviyesine getirmek.
+> Source: `spec.md`  
+> Rules: `.cursor/rules/nasa-mcp.mdc`  
+> Goal: Harden the existing MVP into a portfolio-ready demo.
 
 ---
 
-## Çalışma kuralları
+## Working rules
 
-1. **Bir section bitmeden sonrakine geçme.**
-2. Her section sonunda Agent: değişen dosyaları linkler + doğrulama komutlarını yazar.
-3. **Agent mocked test yazabilir;** section sonunda **en fazla 1** `pytest -q` çalıştırır.
-4. Fail olursa kodu düzeltir; **pytest'i tekrar koşmaz** — komutu kullanıcıya bırakır.
-5. **Agent yapamaz:** live NASA API, Inspector, quota, fail-fix-retry pytest döngüsü.
-6. **Live / E2E doğrulama** (Inspector, Cursor, gerçek NASA) sana ait.
-7. Spec dışı özellik ekleme (EPIC, Media, frontend, Redis, Streamable HTTP, MRTR).
-8. Kod tekrarı yapma; önce `BaseNASAClient`, client'lar, `models.py` kontrol et.
+1. **Do not start the next section until the current one is done.**
+2. At the end of each section, the Agent links changed files and writes verification commands.
+3. **The Agent may write mocked tests** and run **at most one** `pytest -q` per section.
+4. On failure, fix the code; **do not re-run pytest** — leave the command for the user.
+5. **The Agent must not:** call live NASA APIs, launch Inspector, consume API quota, or loop fail-fix-retry pytest.
+6. **Live / E2E verification** (Inspector, Cursor, real NASA) belongs to the user.
+7. Do not add out-of-spec features (EPIC, Media, frontend, Redis, Streamable HTTP, MRTR).
+8. Avoid duplication; check `BaseNASAClient`, existing clients, and `models.py` first.
 
 ### Package management
 
 ```text
-Mevcut pip + .venv ile devam.
-MVP hardening sırasında uv'ye geçiş yok.
+Keep existing pip + .venv.
+No migration to uv during MVP hardening.
 ```
 
 ---
 
-## Mevcut durum
+## Current status
 
-| Bölüm | Durum |
-|-------|--------|
-| Paket iskeleti (`pyproject.toml`, `src/nasa_mcp/`) | ✅ |
-| `BaseNASAClient` + 4 NASA client | ✅ (Section B harden done) |
-| 5 tool + 2 resource + 1 prompt | ✅ (polish edilecek) |
-| Pydantic models | ✅ (küçük düzeltmeler) |
-| Temel test dosyası | ✅ (section'lara dağıtılacak) |
+| Area | Status |
+|------|--------|
+| Package skeleton (`pyproject.toml`, `src/nasa_mcp/`) | ✅ |
+| `BaseNASAClient` + 4 NASA clients | ✅ (Section B harden done) |
+| 5 tools + 2 resources + 1 prompt | ✅ (to be polished) |
+| Pydantic models | ✅ (minor fixes remaining) |
+| Basic test file | ✅ (spread across sections) |
 | Cursor rules + `spec.md` | ✅ |
 | Entry point (`if __name__ == "__main__"`) | ✅ |
 | `.gitignore` | ✅ |
 | `README.md` | ❌ |
 | Shared HTTP client / lifespan | ❌ |
 | `ALL` space weather | ❌ |
-| Mock'lu solid testler | ❌ (B–E'de yazılacak) |
+| Solid mocked tests | ❌ (write in B–E; B done for base client) |
 
 ---
 
-## Section A — Repo temeli
+## Section A — Repository baseline
 
-**Amaç:** Commit'lenebilir, import-safe temel.
+**Goal:** Commit-ready, import-safe foundation.
 
-### Yapılacaklar
+### Tasks
 - [x] `.gitignore` (`.venv/`, `__pycache__/`, `.env`, `.pytest_cache/`)
-- [x] `server.py` sonuna **guard'lı** STDIO entry point:
+- [x] Guarded STDIO entry point at the end of `server.py`:
 
 ```python
 if __name__ == "__main__":
     mcp.run()
 ```
 
-> Import sırasında server başlamamalı. Inspector, testler ve `mcp run` dosyayı import eder.
+> Import must not start the server. Inspector, tests, and `mcp run` import the module.
 
-- [x] `.env.example` kontrol (sadece `NASA_API_KEY`)
+- [x] Verify `.env.example` (only `NASA_API_KEY`)
 
-### Agent doğrulaması
+### Agent verification
 ```bash
 source .venv/bin/activate
 python -c "from nasa_mcp.server import mcp; print('OK')"
 ```
 
-### Senin doğrulaman
-Import sonrası server process başlamadığını kontrol et.
+### User verification
+Confirm that import does not leave a hanging server process.
 
 ---
 
 ## Section B — Client harden
 
-**Amaç:** Test edilebilir, shared HTTP, güvenli hata/retry.
+**Goal:** Injectable shared HTTP, safe errors and retries.
 
-### Yapılacaklar
-- [x] `BaseNASAClient`: dışarıdan `httpx2.AsyncClient` inject edilebilsin
-- [x] Her request'te yeni client açılmasın; shared client kullanılsın
-- [x] `Retry-After` çok büyükse üst sınır (cap) uygula
-- [x] API key log / exception text'e sızmasın
-- [x] Failed response cache'lenmesin
+### Tasks
+- [x] `BaseNASAClient`: accept injected `httpx2.AsyncClient`
+- [x] Do not open a new client per request; reuse a shared client
+- [x] Cap oversized `Retry-After` values
+- [x] Never leak API key into logs or exception text
+- [x] Do not cache failed responses
 
-### Testler (Agent yazar + çalıştırır — mocked)
-- [x] `tests/test_clients.py` — `BaseNASAClient` odaklı
+### Tests (Agent writes; at most one mocked run)
+- [x] `tests/test_clients.py` — focused on `BaseNASAClient`
 - [x] 200 → success
 - [x] 429 → retry
 - [x] 500 → retry
 - [x] timeout → `NASAError`
 - [x] failed response → not cached
 - [x] success → cached
-- [x] API key exception/log içinde yok
-- [x] `Retry-After` cap uygulanıyor
+- [x] API key absent from exception/log text
+- [x] `Retry-After` cap applied
 
-### Agent doğrulaması
+### Agent verification
 ```bash
 source .venv/bin/activate
 python -m pytest tests/test_clients.py -q
 ```
 
-### Senin doğrulaman
-İstersen aynı komutu tekrar çalıştır.
+### User verification
+Re-run the same command if you want.
 
 ---
 
 ## Section C — Server lifespan
 
-**Amaç:** Module-level client yerine MCP lifespan.
+**Goal:** Replace module-level clients with MCP lifespan.
 
-### Yapılacaklar
+### Tasks
 - [ ] `AppContext` (neows, donki, eonet, apod)
-- [ ] Lifespan: shared `httpx2.AsyncClient` aç → client'ları kur → yield → kapat
-- [ ] Tool'lar module-level `_apod_client` vs. yerine context'ten alsın
-- [ ] Import sırasında network çağrısı olmasın
+- [ ] Lifespan: open shared `httpx2.AsyncClient` → build clients → yield → close
+- [ ] Tools take clients from context instead of module-level `_apod_client`, etc.
+- [ ] Import must not perform network I/O
 
-### Testler (Agent yazar + çalıştırır — mocked)
-- [ ] Import `server.py` → HTTP yok
-- [ ] Lifespan client oluşturur
-- [ ] Lifespan shutdown HTTP client'ı kapatır
+### Tests (Agent writes; at most one mocked run)
+- [ ] Importing `server.py` performs no HTTP
+- [ ] Lifespan creates clients
+- [ ] Lifespan shutdown closes the shared HTTP client
 
-### Agent doğrulaması
+### Agent verification
 ```bash
 python -c "from nasa_mcp.server import mcp; print(mcp)"
 python -m pytest tests/ -q -k "lifespan or import"
 ```
 
-### Senin doğrulaman
-Import anında NASA'ya istek gitmediğini doğrula.
+### User verification
+Confirm no NASA request is made at import time.
 
 ---
 
-## Section D — Model & contract düzeltmeleri
+## Section D — Model and contract fixes
 
-**Amaç:** Spec boşluklarını ve küçük bug'ları kapat.
+**Goal:** Close spec gaps and small bugs.
 
-### Kilitleyen kararlar
-- [ ] `Asteroid.id` zorunlu kalsın (search → inspect)
+### Locked decisions
+- [ ] Keep `Asteroid.id` required (search → inspect)
 - [ ] `get_space_weather` event_type: `ALL | CME | FLR | GST | IPS | MPC | RBE | HSS`
 - [ ] `"ALL"` = MCP convenience → DONKI fan-out + merge (newest first)
-- [ ] Boş liste = başarı (`[]`); `NO_DATA` sadece detail lookup'ta
-- [ ] Tool'da `categories: list[str] | None = None` (mutable `[]` yok)
-- [ ] APOD: `media_type` image/video; `hdurl` opsiyonel kalsın
-- [ ] Bbox verilirse 4 sayı validate edilsin
+- [ ] Empty list = success (`[]`); `NO_DATA` only for detail lookups
+- [ ] Tool signature: `categories: list[str] | None = None` (no mutable `[]`)
+- [ ] APOD: `media_type` image/video; `hdurl` remains optional
+- [ ] Validate bbox as four numbers when provided
 
-### Testler (Agent yazar + çalıştırır)
-- [ ] Model/schema validation testleri
-- [ ] NeoWs 7-day range reject
-- [ ] bbox malformed reject
-- [ ] APOD optional `hdurl` absent OK
+### Tests (Agent writes; at most one mocked run)
+- [ ] Model/schema validation tests
+- [ ] NeoWs 7-day range rejection
+- [ ] Malformed bbox rejection
+- [ ] APOD optional `hdurl` absent is OK
 - [ ] `Asteroid.id` required
 
-### Agent doğrulaması
+### Agent verification
 ```bash
 python -m pytest tests/ -q -k "model or contract or validation"
 ```
@@ -161,132 +161,132 @@ python -m pytest tests/ -q -k "model or contract or validation"
 
 ## Section E — Tools / resources / prompt polish
 
-**Amaç:** Domain surface'i demo'ya hazır hale getir.
+**Goal:** Make the domain surface demo-ready.
 
-### Yapılacaklar
-- [ ] 5 tool docstring + `Field(description=...)` gözden geçir
-- [ ] Hepsi `ToolAnnotations(read_only_hint=True)`
-- [ ] Server'da raw NASA parse mümkünse client'a taşı (SOLID)
-- [ ] `nasa://glossary` / `nasa://eonet/categories` kısa ve net kalsın
-- [ ] `daily_mission_briefing` → `ALL` space weather + search → inspect teşviki
+### Tasks
+- [ ] Review 5 tool docstrings + `Field(description=...)`
+- [ ] All tools use `ToolAnnotations(read_only_hint=True)`
+- [ ] Move raw NASA parsing from server into clients where practical (SOLID)
+- [ ] Keep `nasa://glossary` / `nasa://eonet/categories` short and clear
+- [ ] `daily_mission_briefing` → encourage `ALL` space weather + search → inspect
 - [ ] Cache hints: `tools/list` 60s public; `resources/read` 24h public
 
-### Testler (Agent yazar + çalıştırır — mocked MCP)
-- [ ] `Client(mcp)` — 5 tool listed
-- [ ] Her tool `read_only_hint=True`
+### Tests (Agent writes; at most one mocked MCP run)
+- [ ] `Client(mcp)` — 5 tools listed
+- [ ] Every tool has `read_only_hint=True`
 - [ ] `structured_content` shape
 - [ ] `search_asteroids` result includes `id`
 - [ ] NASA failure → `is_error=True` (mock)
 - [ ] Resources + prompt contract
 
-### Agent doğrulaması
+### Agent verification
 ```bash
 python -m pytest tests/test_server.py -q
 ```
 
-### Senin doğrulaman (Inspector — live)
+### User verification (Inspector — live)
 ```bash
 source .venv/bin/activate
 mcp dev src/nasa_mcp/server.py
 ```
-Kontrol: 5 tool, 2 resource, 1 prompt görünür.
+Check: 5 tools, 2 resources, 1 prompt are visible.
 
 ---
 
-## Section F — Test suite tamamlama
+## Section F — Test suite completion
 
-**Amaç:** Eksik coverage'ı kapat; integration matrix'i tamamla. İlk test burada değil, B–E'de yazıldı.
+**Goal:** Close coverage gaps and finish the integration matrix. First tests are written in B–E, not here.
 
-### Yapılacaklar
-- [ ] `tests/fixtures/` — örnek NASA JSON'ları tamamla
-- [ ] Adapter testleri: neows, donki, eonet, apod
+### Tasks
+- [ ] Complete `tests/fixtures/` sample NASA JSON
+- [ ] Adapter tests: neows, donki, eonet, apod
 - [ ] Error matrix: invalid arg, empty list, unknown asteroid
-- [ ] Live NASA çağrısı otomatik testte olmasın
+- [ ] Automated tests must not call live NASA
 
-### Agent doğrulaması
+### Agent verification
 ```bash
 python -m pytest tests/ -q
 ```
 
-### Senin doğrulaman
-Full suite yeşil.
+### User verification
+Full suite green.
 
 ---
 
-## Section G — README & demo
+## Section G — README and demo
 
-**Amaç:** CV / portfolio yüzü.
+**Goal:** CV / portfolio surface.
 
-### Yapılacaklar
-- [ ] README: ne / neden MCP / mimari (kısa)
-- [ ] Kurulum + `NASA_API_KEY`
+### Tasks
+- [ ] README: what / why MCP / short architecture
+- [ ] Setup + `NASA_API_KEY`
 - [ ] Inspector: `mcp dev src/nasa_mcp/server.py`
-- [ ] Cursor MCP config örneği
-- [ ] Tool / resource / prompt tablosu
-- [ ] Demo prompt'lar
-- [ ] İki cache layer kısa açıklama
-- [ ] Future: Streamable HTTP, frontend, EPIC… (MVP dışı)
+- [ ] Cursor MCP config example
+- [ ] Tool / resource / prompt table
+- [ ] Demo prompts
+- [ ] Short note on the two cache layers
+- [ ] Future work: Streamable HTTP, frontend, EPIC… (out of MVP)
 
-### Senin doğrulaman
-README ile sıfırdan kurulum yapabilmek.
+### User verification
+A new developer can install and run from README alone.
 
 ---
 
-## Section H — Senin live E2E kabul
+## Section H — Live E2E acceptance (user)
 
-**Amaç:** MVP "bitti" kararı. Agent burada kod yazmaz.
+**Goal:** Declare MVP complete. The Agent does not write code here.
 
 ### Checklist
-- [ ] Inspector'da 5 tool + 2 resource + 1 prompt
-- [ ] `get_apod` gerçek veri
-- [ ] `get_space_weather` ile `ALL` veya tek tip
+- [ ] Inspector shows 5 tools + 2 resources + 1 prompt
+- [ ] `get_apod` returns real data
+- [ ] `get_space_weather` with `ALL` or a single type
 - [ ] `get_earth_events` open events
-- [ ] Cursor'da: *Give me a mission briefing for the next 7 days.*
-- [ ] pytest yeşil (Section F sonrası)
+- [ ] In Cursor: *Give me a mission briefing for the next 7 days.*
+- [ ] pytest green (after Section F)
 
-### Ana demo senaryosu (search → inspect)
+### Primary demo scenario (search → inspect)
 
 ```text
 User: Which potentially hazardous asteroids are approaching Earth this week?
 Host: search_asteroids(...)
 
 User: Tell me more about the closest one.
-Host: get_asteroid(id)   ← önceki structured_content'teki id
+Host: get_asteroid(id)   ← id from previous structured_content
 ```
 
-Bu senaryo projenin asıl mesajını gösterir: LLM semantic tool keşfi + structured output'un bir tool'dan diğerine taşınması.
+This scenario shows the project's real message: LLM semantic tool discovery and carrying structured output from one tool into the next.
 
-### Demo komutları
+### Demo commands
 ```bash
 source .venv/bin/activate
-export NASA_API_KEY=...   # veya DEMO_KEY (limitli)
+export NASA_API_KEY=...   # or DEMO_KEY (rate-limited)
 mcp dev src/nasa_mcp/server.py
 python -m pytest tests/ -v
 ```
 
 ---
 
-## MVP dışı (şimdilik yok)
+## Out of MVP (not now)
 
 Streamable HTTP · MRTR · Redis · Auth · EPIC · Media Library · Leaflet · React UI · Docker · OTLP exporter · Eval dashboard
 
 ---
 
-## İlerleme sırası
+## Progress order
 
 ```text
-A  Repo temeli
-B  Client harden        + BaseNASAClient mocked tests
-C  Server lifespan      + lifespan/import tests
-D  Model & contract     + validation tests
-E  Surface polish       + MCP contract tests
+A  Repo baseline
+B  Client harden          + BaseNASAClient mocked tests
+C  Server lifespan        + lifespan/import tests
+D  Model & contract       + validation tests
+E  Surface polish         + MCP contract tests
 F  Test suite completion
 G  README
-H  Senin live E2E       ← MVP bitti
+H  User live E2E          ← MVP done
 ```
 
 ---
 
-## Sonraki adım
+## Next step
 
-**Section A** ile başla.
+**Section C — Server lifespan.**
