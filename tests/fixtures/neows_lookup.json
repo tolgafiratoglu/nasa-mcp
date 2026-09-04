@@ -1,0 +1,27 @@
+{
+  "id": "2000433",
+  "name": "433 Eros (A898 PA)",
+  "absolute_magnitude_h": 10.31,
+  "is_potentially_hazardous_asteroid": false,
+  "estimated_diameter": {
+    "meters": {
+      "estimated_diameter_min": 100.0,
+      "estimated_diameter_max": 200.0
+    }
+  },
+  "orbital_data": {
+    "orbital_period": "643.0"
+  },
+  "close_approach_data": [
+    {
+      "close_approach_date": "2024-01-02",
+      "miss_distance": { "kilometers": "1500000.0" },
+      "relative_velocity": { "kilometers_per_hour": "45000.0" }
+    },
+    {
+      "close_approach_date": "2025-06-01",
+      "miss_distance": { "kilometers": "2000000.0" },
+      "relative_velocity": { "kilometers_per_hour": "40000.0" }
+    }
+  ]
+}

@@ -6,15 +6,22 @@ resources, and prompts for AI host consumption.
 STDIO transport: stdout is protocol-owned. Use logging (-> stderr), never print().
 """
 
-import logging
-from typing import Annotated
+from __future__ import annotations
 
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from typing import Annotated, Literal
+
+import httpx2
 from mcp.server import CacheHint, MCPServer
+from mcp.server.mcpserver import Context
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from nasa_mcp.clients.apod import ApodClient
-from nasa_mcp.clients.base import NASAError
+from nasa_mcp.clients.base import DEFAULT_TIMEOUT, NASAError
 from nasa_mcp.clients.donki import DonkiClient
 from nasa_mcp.clients.eonet import EonetClient
 from nasa_mcp.clients.neows import NeoWsClient
@@ -22,49 +29,60 @@ from nasa_mcp.models import (
     APODResult,
     Asteroid,
     AsteroidDetail,
-    CloseApproach,
     EarthEvent,
-    EventGeometry,
     SpaceWeatherEvent,
 )
 
 logger = logging.getLogger(__name__)
 
+
+@dataclass
+class AppContext:
+    """Shared NASA clients for the life of the MCP server process."""
+
+    http: httpx2.AsyncClient
+    apod: ApodClient
+    neows: NeoWsClient
+    donki: DonkiClient
+    eonet: EonetClient
+
+
+@asynccontextmanager
+async def app_lifespan(server: MCPServer) -> AsyncIterator[AppContext]:
+    """Open one shared HTTP client and NASA adapters; close on shutdown."""
+    http = httpx2.AsyncClient(timeout=DEFAULT_TIMEOUT)
+    ctx = AppContext(
+        http=http,
+        apod=ApodClient(http_client=http),
+        neows=NeoWsClient(http_client=http),
+        donki=DonkiClient(http_client=http),
+        eonet=EonetClient(http_client=http),
+    )
+    logger.info("NASA Mission Control lifespan started")
+    try:
+        yield ctx
+    finally:
+        await http.aclose()
+        logger.info("NASA Mission Control lifespan stopped")
+
+
 mcp = MCPServer(
     "NASA Mission Control",
+    lifespan=app_lifespan,
     cache_hints={
         "tools/list": CacheHint(ttl_ms=60_000, scope="public"),
         "resources/read": CacheHint(ttl_ms=86_400_000, scope="public"),
     },
 )
 
-_apod_client = ApodClient()
-_neows_client = NeoWsClient()
-_donki_client = DonkiClient()
-_eonet_client = EonetClient()
+
+def _app(ctx: Context[AppContext]) -> AppContext:
+    return ctx.request_context.lifespan_context
 
 
-def _parse_asteroid(raw: dict) -> Asteroid:
-    """Extract an Asteroid model from raw NeoWs feed data."""
-    diameter = raw.get("estimated_diameter", {}).get("meters", {})
-    approaches = raw.get("close_approach_data", [])
-
-    close = None
-    if approaches:
-        ca = approaches[0]
-        close = CloseApproach(
-            date=ca.get("close_approach_date", ""),
-            miss_distance_km=float(ca.get("miss_distance", {}).get("kilometers", 0)),
-            relative_velocity_kmh=float(ca.get("relative_velocity", {}).get("kilometers_per_hour", 0)),
-        )
-
-    return Asteroid(
-        id=str(raw.get("id", "")),
-        name=raw.get("name", ""),
-        potentially_hazardous=raw.get("is_potentially_hazardous_asteroid", False),
-        diameter_min_m=float(diameter.get("estimated_diameter_min", 0)),
-        diameter_max_m=float(diameter.get("estimated_diameter_max", 0)),
-        close_approach=close,
+def _nasa_error(exc: NASAError) -> Exception:
+    return Exception(
+        f"NASA API error: {exc.message} (type={exc.error_type}, retryable={exc.retryable})"
     )
 
 
@@ -73,27 +91,20 @@ def _parse_asteroid(raw: dict) -> Asteroid:
     annotations=ToolAnnotations(read_only_hint=True),
 )
 async def get_apod(
-    date: Annotated[str | None, Field(description="Date in YYYY-MM-DD format. Defaults to today.")] = None,
+    ctx: Context[AppContext],
+    date: Annotated[
+        str | None,
+        Field(description="Date in YYYY-MM-DD format. Defaults to today."),
+    ] = None,
 ) -> APODResult:
-    """Get NASA's Astronomy Picture of the Day with its explanation.
+    """Get NASA's Astronomy Picture of the Day with title, media URL, and explanation.
 
-    Returns the title, image URL, and a detailed explanation written
-    by a professional astronomer. Great for daily space inspiration.
+    Prefer this for astronomy imagery questions. media_type may be image or video.
     """
     try:
-        data = await _apod_client.get_apod(date=date)
+        return await _app(ctx).apod.get_apod(date=date)
     except NASAError as exc:
-        raise Exception(f"NASA API error: {exc.message} (type={exc.error_type}, retryable={exc.retryable})")
-
-    return APODResult(
-        title=data["title"],
-        date=data["date"],
-        explanation=data["explanation"],
-        url=data["url"],
-        hdurl=data.get("hdurl"),
-        media_type=data["media_type"],
-        copyright=data.get("copyright"),
-    )
+        raise _nasa_error(exc) from exc
 
 
 @mcp.tool(
@@ -101,27 +112,27 @@ async def get_apod(
     annotations=ToolAnnotations(read_only_hint=True),
 )
 async def search_asteroids(
+    ctx: Context[AppContext],
     start_date: Annotated[str, Field(description="Start date in YYYY-MM-DD format.")],
     end_date: Annotated[str, Field(description="End date in YYYY-MM-DD format.")],
-    hazardous_only: Annotated[bool, Field(description="Filter to potentially hazardous asteroids only.")] = False,
+    hazardous_only: Annotated[
+        bool,
+        Field(description="If true, return only potentially hazardous asteroids (PHA)."),
+    ] = False,
 ) -> list[Asteroid]:
-    """Search near-Earth asteroids by their close approach date to Earth.
+    """Search near-Earth asteroids by close-approach date range (max 7 days).
 
-    Returns asteroids with estimated diameter, miss distance, and velocity.
-    Date range is limited to 7 days by the NASA NeoWs API.
-    Use get_asteroid for detailed information on a specific object.
+    Each result includes an id — call get_asteroid with that id for orbital detail.
+    Empty list means no matches in range (not an error).
     """
     try:
-        raw_asteroids = await _neows_client.search_asteroids(start_date, end_date)
+        return await _app(ctx).neows.search_asteroids(
+            start_date,
+            end_date,
+            hazardous_only=hazardous_only,
+        )
     except NASAError as exc:
-        raise Exception(f"NASA API error: {exc.message} (type={exc.error_type}, retryable={exc.retryable})")
-
-    asteroids = [_parse_asteroid(raw) for raw in raw_asteroids]
-
-    if hazardous_only:
-        asteroids = [a for a in asteroids if a.potentially_hazardous]
-
-    return asteroids
+        raise _nasa_error(exc) from exc
 
 
 @mcp.tool(
@@ -129,43 +140,20 @@ async def search_asteroids(
     annotations=ToolAnnotations(read_only_hint=True),
 )
 async def get_asteroid(
-    asteroid_id: Annotated[str, Field(description="NASA JPL SPK-ID of the asteroid.")],
+    ctx: Context[AppContext],
+    asteroid_id: Annotated[
+        str,
+        Field(description="NASA JPL SPK-ID from search_asteroids (e.g. '2000433')."),
+    ],
 ) -> AsteroidDetail:
-    """Get detailed information about a specific near-Earth asteroid.
+    """Get detailed orbital and approach data for one asteroid by id.
 
-    Returns orbital data, size estimates, absolute magnitude, and
-    a full list of known close approaches. Use search_asteroids first
-    to find interesting asteroid IDs.
+    Use after search_asteroids to inspect a notable or hazardous object.
     """
     try:
-        raw = await _neows_client.get_asteroid(asteroid_id)
+        return await _app(ctx).neows.get_asteroid(asteroid_id)
     except NASAError as exc:
-        raise Exception(f"NASA API error: {exc.message} (type={exc.error_type}, retryable={exc.retryable})")
-
-    diameter = raw.get("estimated_diameter", {}).get("meters", {})
-    orbital = raw.get("orbital_data", {})
-
-    approaches = []
-    for ca in raw.get("close_approach_data", []):
-        approaches.append(CloseApproach(
-            date=ca.get("close_approach_date", ""),
-            miss_distance_km=float(ca.get("miss_distance", {}).get("kilometers", 0)),
-            relative_velocity_kmh=float(ca.get("relative_velocity", {}).get("kilometers_per_hour", 0)),
-        ))
-
-    period_raw = orbital.get("orbital_period")
-    orbital_period = float(period_raw) if period_raw else None
-
-    return AsteroidDetail(
-        id=str(raw.get("id", "")),
-        name=raw.get("name", ""),
-        potentially_hazardous=raw.get("is_potentially_hazardous_asteroid", False),
-        diameter_min_m=float(diameter.get("estimated_diameter_min", 0)),
-        diameter_max_m=float(diameter.get("estimated_diameter_max", 0)),
-        absolute_magnitude=float(raw.get("absolute_magnitude_h", 0)),
-        orbital_period_days=orbital_period,
-        close_approaches=approaches,
-    )
+        raise _nasa_error(exc) from exc
 
 
 @mcp.tool(
@@ -173,58 +161,27 @@ async def get_asteroid(
     annotations=ToolAnnotations(read_only_hint=True),
 )
 async def get_space_weather(
+    ctx: Context[AppContext],
     event_type: Annotated[
-        str,
-        Field(description="Event type: CME, FLR (solar flare), GST (geomagnetic storm), IPS, MPC, RBE, or HSS."),
+        Literal["ALL", "CME", "FLR", "GST", "IPS", "MPC", "RBE", "HSS"],
+        Field(
+            description=(
+                "ALL fans out across DONKI types; or CME, FLR (flare), GST (storm), "
+                "IPS, MPC, RBE, HSS."
+            )
+        ),
     ],
     start_date: Annotated[str, Field(description="Start date in YYYY-MM-DD format.")],
     end_date: Annotated[str, Field(description="End date in YYYY-MM-DD format.")],
 ) -> list[SpaceWeatherEvent]:
-    """Get space weather events from NASA's DONKI database.
+    """Get space weather events from NASA DONKI for a date range.
 
-    Covers coronal mass ejections (CME), solar flares (FLR),
-    geomagnetic storms (GST), interplanetary shocks (IPS),
-    magnetopause crossings (MPC), radiation belt enhancements (RBE),
-    and high-speed streams (HSS).
+    Prefer event_type=ALL for mission briefings. Empty list means no events found.
     """
     try:
-        raw_events = await _donki_client.get_events(event_type, start_date, end_date)
+        return await _app(ctx).donki.get_events(event_type, start_date, end_date)
     except NASAError as exc:
-        raise Exception(f"NASA API error: {exc.message} (type={exc.error_type}, retryable={exc.retryable})")
-
-    TIME_KEYS = {
-        "CME": "startTime",
-        "FLR": "beginTime",
-        "GST": "startTime",
-        "IPS": "eventTime",
-        "MPC": "eventTime",
-        "RBE": "eventTime",
-        "HSS": "eventTime",
-    }
-    time_key = TIME_KEYS.get(event_type, "eventTime")
-
-    ID_KEYS = {
-        "CME": "activityID",
-        "FLR": "flrID",
-        "GST": "gstID",
-        "IPS": "activityID",
-        "MPC": "activityID",
-        "RBE": "activityID",
-        "HSS": "activityID",
-    }
-    id_key = ID_KEYS.get(event_type, "activityID")
-
-    events = []
-    for raw in raw_events:
-        events.append(SpaceWeatherEvent(
-            event_type=event_type,
-            event_id=str(raw.get(id_key, "")),
-            time=str(raw.get(time_key, "")),
-            link=str(raw.get("link", "")),
-            summary=str(raw.get("note", raw.get("instruments", ""))),
-        ))
-
-    return events
+        raise _nasa_error(exc) from exc
 
 
 @mcp.tool(
@@ -232,59 +189,40 @@ async def get_space_weather(
     annotations=ToolAnnotations(read_only_hint=True),
 )
 async def get_earth_events(
+    ctx: Context[AppContext],
     categories: Annotated[
-        list[str],
-        Field(description="Filter by category IDs, e.g. ['wildfires', 'volcanoes']. Empty list for all."),
-    ] = [],
-    days: Annotated[int, Field(description="Number of days to look back. Default 7.", ge=1, le=365)] = 7,
+        list[str] | None,
+        Field(
+            description="Category IDs such as wildfires, volcanoes. Omit/null for all."
+        ),
+    ] = None,
+    days: Annotated[
+        int,
+        Field(description="Look-back window in days (1–365). Default 7.", ge=1, le=365),
+    ] = 7,
     status: Annotated[
-        str,
-        Field(description="Event status filter: 'open', 'closed', or 'all'. Default 'open'."),
+        Literal["open", "closed", "all"],
+        Field(description="open, closed, or all. Default open."),
     ] = "open",
     bbox: Annotated[
         str | None,
-        Field(description="Bounding box as 'min_lon,min_lat,max_lon,max_lat' for geographic filtering."),
+        Field(description="Optional bbox: min_lon,min_lat,max_lon,max_lat."),
     ] = None,
 ) -> list[EarthEvent]:
-    """Get active natural events on Earth from NASA's EONET tracker.
+    """Get natural Earth events from EONET (wildfires, storms, volcanoes, etc.).
 
-    Covers wildfires, volcanoes, severe storms, floods, icebergs,
-    earthquakes, and more. Returns events with geographic coordinates
-    for mapping. Use nasa://eonet/categories resource for category reference.
+    Results include coordinates for mapping. See nasa://eonet/categories.
+    Empty list means no matching events.
     """
     try:
-        raw_events = await _eonet_client.get_events(
-            categories=categories if categories else None,
+        return await _app(ctx).eonet.get_events(
+            categories=categories,
             days=days,
             status=status,
             bbox=bbox,
         )
     except NASAError as exc:
-        raise Exception(f"NASA API error: {exc.message} (type={exc.error_type}, retryable={exc.retryable})")
-
-    events = []
-    for raw in raw_events:
-        geometry = []
-        for geo in raw.get("geometry", []):
-            coords = geo.get("coordinates", [])
-            if len(coords) >= 2:
-                geometry.append(EventGeometry(
-                    date=str(geo.get("date", "")),
-                    type=geo.get("type", "Point"),
-                    coordinates=coords[:2],
-                ))
-
-        cat_titles = [c.get("title", "") for c in raw.get("categories", [])]
-
-        events.append(EarthEvent(
-            id=str(raw.get("id", "")),
-            title=raw.get("title", ""),
-            categories=cat_titles,
-            status="closed" if raw.get("closed") else "open",
-            geometry=geometry,
-        ))
-
-    return events
+        raise _nasa_error(exc) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -293,95 +231,62 @@ async def get_earth_events(
 
 NASA_GLOSSARY = """# NASA Mission Control Glossary
 
-**NEO** (Near-Earth Object): An asteroid or comet with a perihelion distance less than 1.3 AU.
-
-**PHA** (Potentially Hazardous Asteroid): An asteroid with a minimum orbit intersection distance (MOID) of 0.05 AU or less and an absolute magnitude (H) of 22.0 or brighter.
-
-**AU** (Astronomical Unit): The mean distance from the Earth to the Sun, approximately 149.6 million km.
-
-**Miss Distance**: The closest distance an asteroid will pass from Earth during a given approach.
-
-**Absolute Magnitude (H)**: A measure of an asteroid's intrinsic brightness. Lower values indicate larger or more reflective objects.
-
-**CME** (Coronal Mass Ejection): A large expulsion of plasma and magnetic field from the Sun's corona.
-
-**Solar Flare**: A sudden flash of increased brightness on the Sun, classified by peak X-ray flux as A, B, C, M, or X class.
-
-**Geomagnetic Storm**: A disturbance of Earth's magnetosphere caused by solar wind shock waves, rated on the Kp index (G1–G5).
-
-**EONET**: NASA's Earth Observatory Natural Event Tracker, cataloging wildfires, volcanoes, storms, icebergs, and other natural events worldwide.
-
-**APOD**: Astronomy Picture of the Day, a daily image or video of the cosmos with an explanation by a professional astronomer.
-
-**DSCOVR/EPIC**: The Deep Space Climate Observatory carries the Earth Polychromatic Imaging Camera, capturing full-disc Earth images from the L1 Lagrange point.
-
-**DONKI**: Space Weather Database Of Notifications, Knowledge, Information — NASA's comprehensive space weather event catalog.
-
-**Kp Index**: A planetary index measuring geomagnetic activity on a 0–9 scale.
+**NEO** — Near-Earth Object (perihelion < 1.3 AU).
+**PHA** — Potentially Hazardous Asteroid (MOID ≤ 0.05 AU, H ≤ 22).
+**AU** — Astronomical Unit (~149.6 million km).
+**Miss distance** — Closest Earth approach distance for a pass.
+**CME** — Coronal Mass Ejection.
+**Solar flare** — Sudden solar brightening (classes A/B/C/M/X).
+**Geomagnetic storm** — Magnetosphere disturbance (Kp / G1–G5).
+**DONKI** — NASA space-weather event catalog.
+**EONET** — Earth Observatory Natural Event Tracker.
+**APOD** — Astronomy Picture of the Day.
 """
 
-EONET_CATEGORIES = """# EONET Event Categories
+EONET_CATEGORIES = """# EONET Categories (use titles/ids with get_earth_events)
 
-| ID | Title | Description |
-|----|-------|-------------|
-| 6 | Drought | Long-term water shortages |
-| 7 | Dust and Haze | Dust storms and atmospheric haze |
-| 16 | Earthquakes | Seismic events |
-| 9 | Floods | Flooding events |
-| 14 | Landslides | Landslide events |
-| 19 | Manmade | Human-caused events |
-| 15 | Sea and Lake Ice | Ice formation and breakup |
-| 10 | Severe Storms | Tropical cyclones, nor'easters, severe thunderstorms |
-| 17 | Snow | Snowfall and blizzards |
-| 18 | Temperature Extremes | Heat waves and cold spells |
-| 12 | Volcanoes | Volcanic eruptions and activity |
-| 13 | Water Color | Algal blooms and water discoloration |
-| 8 | Wildfires | Forest and brush fires |
+| ID | Title |
+|----|-------|
+| 8 | Wildfires |
+| 12 | Volcanoes |
+| 10 | Severe Storms |
+| 9 | Floods |
+| 15 | Sea and Lake Ice |
+| 16 | Earthquakes |
+| 6 | Drought |
+| 7 | Dust and Haze |
+| 14 | Landslides |
+| 17 | Snow |
+| 18 | Temperature Extremes |
+| 13 | Water Color |
+| 19 | Manmade |
 """
 
 
 @mcp.resource("nasa://glossary")
 def glossary() -> str:
-    """NASA and space science terminology used across Mission Control tools.
-
-    Provides definitions for NEO, PHA, AU, CME, solar flare, geomagnetic storm,
-    and other domain terms that help interpret tool results correctly.
-    """
+    """Short glossary of NEO, PHA, CME, DONKI, EONET, and related terms."""
     return NASA_GLOSSARY
 
 
 @mcp.resource("nasa://eonet/categories")
 def eonet_categories() -> str:
-    """EONET natural event categories with IDs used by the get_earth_events tool.
-
-    Reference this to understand event category codes when filtering Earth events.
-    """
+    """Compact EONET category id/title table for get_earth_events filters."""
     return EONET_CATEGORIES
-
-
-# ---------------------------------------------------------------------------
-# Prompts
-# ---------------------------------------------------------------------------
 
 
 @mcp.prompt(title="Daily Mission Briefing")
 def daily_mission_briefing() -> str:
-    """Generate today's NASA Mission Control briefing.
-
-    Triggers multi-tool orchestration: the LLM discovers and calls
-    search_asteroids, get_space_weather, get_earth_events, get_apod,
-    and optionally get_asteroid for notable objects.
-    """
+    """Orchestrate a multi-tool NASA Mission Control briefing for the next 7 days."""
     return (
-        "Create today's NASA Mission Control Briefing.\n\n"
-        "Include:\n"
-        "- Near-Earth asteroids approaching this week "
-        "(flag any potentially hazardous ones)\n"
-        "- Recent significant space weather events\n"
-        "- Currently active major natural events on Earth\n"
-        "- Today's Astronomy Picture of the Day\n\n"
-        "Investigate anything unusual in more detail. "
-        "Present the briefing in a structured, mission-control style."
+        "Create today's NASA Mission Control Briefing for the next 7 days.\n\n"
+        "1. Call search_asteroids for this week with hazardous_only=true. "
+        "For the most notable approach, call get_asteroid with its id.\n"
+        "2. Call get_space_weather with event_type=ALL for a recent date range.\n"
+        "3. Call get_earth_events for currently open major events.\n"
+        "4. Call get_apod for today's astronomy picture.\n\n"
+        "Present a structured mission-control briefing. "
+        "Do not claim a PHA implies an impact is predicted."
     )
 
 

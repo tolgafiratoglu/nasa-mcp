@@ -31,17 +31,17 @@ No migration to uv during MVP hardening.
 | Area | Status |
 |------|--------|
 | Package skeleton (`pyproject.toml`, `src/nasa_mcp/`) | ✅ |
-| `BaseNASAClient` + 4 NASA clients | ✅ (Section B harden done) |
-| 5 tools + 2 resources + 1 prompt | ✅ (to be polished) |
-| Pydantic models | ✅ (minor fixes remaining) |
-| Basic test file | ✅ (spread across sections) |
+| `BaseNASAClient` + 4 NASA clients | ✅ |
+| 5 tools + 2 resources + 1 prompt | ✅ |
+| Pydantic models | ✅ |
+| Mocked test suite | ✅ (Sections B–F) |
 | Cursor rules + `spec.md` | ✅ |
 | Entry point (`if __name__ == "__main__"`) | ✅ |
 | `.gitignore` | ✅ |
-| `README.md` | ❌ |
-| Shared HTTP client / lifespan | ❌ |
-| `ALL` space weather | ❌ |
-| Solid mocked tests | ❌ (write in B–E; B done for base client) |
+| `README.md` | ✅ |
+| Shared HTTP client / lifespan | ✅ |
+| `ALL` space weather | ✅ |
+| User live E2E (Section H) | ⏳ |
 
 ---
 
@@ -111,15 +111,15 @@ Re-run the same command if you want.
 **Goal:** Replace module-level clients with MCP lifespan.
 
 ### Tasks
-- [ ] `AppContext` (neows, donki, eonet, apod)
-- [ ] Lifespan: open shared `httpx2.AsyncClient` → build clients → yield → close
-- [ ] Tools take clients from context instead of module-level `_apod_client`, etc.
-- [ ] Import must not perform network I/O
+- [x] `AppContext` (neows, donki, eonet, apod)
+- [x] Lifespan: open shared `httpx2.AsyncClient` → build clients → yield → close
+- [x] Tools take clients from context instead of module-level `_apod_client`, etc.
+- [x] Import must not perform network I/O
 
 ### Tests (Agent writes; at most one mocked run)
-- [ ] Importing `server.py` performs no HTTP
-- [ ] Lifespan creates clients
-- [ ] Lifespan shutdown closes the shared HTTP client
+- [x] Importing `server.py` performs no HTTP
+- [x] Lifespan creates clients
+- [x] Lifespan shutdown closes the shared HTTP client
 
 ### Agent verification
 ```bash
@@ -137,20 +137,20 @@ Confirm no NASA request is made at import time.
 **Goal:** Close spec gaps and small bugs.
 
 ### Locked decisions
-- [ ] Keep `Asteroid.id` required (search → inspect)
-- [ ] `get_space_weather` event_type: `ALL | CME | FLR | GST | IPS | MPC | RBE | HSS`
-- [ ] `"ALL"` = MCP convenience → DONKI fan-out + merge (newest first)
-- [ ] Empty list = success (`[]`); `NO_DATA` only for detail lookups
-- [ ] Tool signature: `categories: list[str] | None = None` (no mutable `[]`)
-- [ ] APOD: `media_type` image/video; `hdurl` remains optional
-- [ ] Validate bbox as four numbers when provided
+- [x] Keep `Asteroid.id` required (search → inspect)
+- [x] `get_space_weather` event_type: `ALL | CME | FLR | GST | IPS | MPC | RBE | HSS`
+- [x] `"ALL"` = MCP convenience → DONKI fan-out + merge (newest first)
+- [x] Empty list = success (`[]`); `NO_DATA` only for detail lookups
+- [x] Tool signature: `categories: list[str] | None = None` (no mutable `[]`)
+- [x] APOD: `media_type` image/video; `hdurl` remains optional
+- [x] Validate bbox as four numbers when provided
 
 ### Tests (Agent writes; at most one mocked run)
-- [ ] Model/schema validation tests
-- [ ] NeoWs 7-day range rejection
-- [ ] Malformed bbox rejection
-- [ ] APOD optional `hdurl` absent is OK
-- [ ] `Asteroid.id` required
+- [x] Model/schema validation tests
+- [x] NeoWs 7-day range rejection
+- [x] Malformed bbox rejection
+- [x] APOD optional `hdurl` absent is OK
+- [x] `Asteroid.id` required
 
 ### Agent verification
 ```bash
@@ -164,20 +164,20 @@ python -m pytest tests/ -q -k "model or contract or validation"
 **Goal:** Make the domain surface demo-ready.
 
 ### Tasks
-- [ ] Review 5 tool docstrings + `Field(description=...)`
-- [ ] All tools use `ToolAnnotations(read_only_hint=True)`
-- [ ] Move raw NASA parsing from server into clients where practical (SOLID)
-- [ ] Keep `nasa://glossary` / `nasa://eonet/categories` short and clear
-- [ ] `daily_mission_briefing` → encourage `ALL` space weather + search → inspect
-- [ ] Cache hints: `tools/list` 60s public; `resources/read` 24h public
+- [x] Review 5 tool docstrings + `Field(description=...)`
+- [x] All tools use `ToolAnnotations(read_only_hint=True)`
+- [x] Move raw NASA parsing from server into clients where practical (SOLID)
+- [x] Keep `nasa://glossary` / `nasa://eonet/categories` short and clear
+- [x] `daily_mission_briefing` → encourage `ALL` space weather + search → inspect
+- [x] Cache hints: `tools/list` 60s public; `resources/read` 24h public
 
 ### Tests (Agent writes; at most one mocked MCP run)
-- [ ] `Client(mcp)` — 5 tools listed
-- [ ] Every tool has `read_only_hint=True`
-- [ ] `structured_content` shape
-- [ ] `search_asteroids` result includes `id`
-- [ ] NASA failure → `is_error=True` (mock)
-- [ ] Resources + prompt contract
+- [x] `Client(mcp)` — 5 tools listed
+- [x] Every tool has `read_only_hint=True`
+- [x] `structured_content` shape
+- [x] `search_asteroids` result includes `id`
+- [x] NASA failure → `is_error=True` (mock)
+- [x] Resources + prompt contract
 
 ### Agent verification
 ```bash
@@ -198,10 +198,10 @@ Check: 5 tools, 2 resources, 1 prompt are visible.
 **Goal:** Close coverage gaps and finish the integration matrix. First tests are written in B–E, not here.
 
 ### Tasks
-- [ ] Complete `tests/fixtures/` sample NASA JSON
-- [ ] Adapter tests: neows, donki, eonet, apod
-- [ ] Error matrix: invalid arg, empty list, unknown asteroid
-- [ ] Automated tests must not call live NASA
+- [x] Complete `tests/fixtures/` sample NASA JSON
+- [x] Adapter tests: neows, donki, eonet, apod
+- [x] Error matrix: invalid arg, empty list, unknown asteroid
+- [x] Automated tests must not call live NASA
 
 ### Agent verification
 ```bash
@@ -218,14 +218,14 @@ Full suite green.
 **Goal:** CV / portfolio surface.
 
 ### Tasks
-- [ ] README: what / why MCP / short architecture
-- [ ] Setup + `NASA_API_KEY`
-- [ ] Inspector: `mcp dev src/nasa_mcp/server.py`
-- [ ] Cursor MCP config example
-- [ ] Tool / resource / prompt table
-- [ ] Demo prompts
-- [ ] Short note on the two cache layers
-- [ ] Future work: Streamable HTTP, frontend, EPIC… (out of MVP)
+- [x] README: what / why MCP / short architecture
+- [x] Setup + `NASA_API_KEY`
+- [x] Inspector: `mcp dev src/nasa_mcp/server.py`
+- [x] Cursor MCP config example
+- [x] Tool / resource / prompt table
+- [x] Demo prompts
+- [x] Short note on the two cache layers
+- [x] Future work: Streamable HTTP, frontend, EPIC… (out of MVP)
 
 ### User verification
 A new developer can install and run from README alone.
@@ -289,4 +289,4 @@ H  User live E2E          ← MVP done
 
 ## Next step
 
-**Section C — Server lifespan.**
+**Section H — Live E2E acceptance (user).** Agent code work for MVP hardening is done.

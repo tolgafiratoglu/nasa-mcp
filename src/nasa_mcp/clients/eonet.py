@@ -5,6 +5,8 @@ from typing import Any
 import httpx2
 
 from nasa_mcp.clients.base import BaseNASAClient, NASAError
+from nasa_mcp.models import EarthEvent, EventGeometry
+from nasa_mcp.validation import validate_bbox
 
 EONET_BASE_URL = "https://eonet.gsfc.nasa.gov/api/v3"
 
@@ -28,13 +30,36 @@ class EonetClient(BaseNASAClient):
             cache_ttl=300,  # 5 min — natural events can change status rapidly
         )
 
+    def _parse_event(self, raw: dict[str, Any]) -> EarthEvent:
+        geometry = []
+        for geo in raw.get("geometry", []):
+            coords = geo.get("coordinates", [])
+            if len(coords) >= 2:
+                geometry.append(
+                    EventGeometry(
+                        date=str(geo.get("date", "")),
+                        type=geo.get("type", "Point"),
+                        coordinates=coords[:2],
+                    )
+                )
+
+        cat_titles = [c.get("title", "") for c in raw.get("categories", [])]
+
+        return EarthEvent(
+            id=str(raw.get("id", "")),
+            title=raw.get("title", ""),
+            categories=cat_titles,
+            status="closed" if raw.get("closed") else "open",
+            geometry=geometry,
+        )
+
     async def get_events(
         self,
         categories: list[str] | None = None,
         days: int = 7,
         status: str = "open",
         bbox: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[EarthEvent]:
         """Fetch natural events from EONET v3.
 
         Args:
@@ -44,10 +69,10 @@ class EonetClient(BaseNASAClient):
             bbox: Bounding box as "min_lon,min_lat,max_lon,max_lat".
 
         Returns:
-            List of event dicts from EONET.
+            Normalized EarthEvent list (empty = no matches).
 
         Raises:
-            NASAError: On upstream failures.
+            NASAError: On validation or upstream failures.
         """
         params: dict[str, Any] = {
             "days": days,
@@ -55,6 +80,7 @@ class EonetClient(BaseNASAClient):
         }
 
         if bbox:
+            validate_bbox(bbox)
             params["bbox"] = bbox
 
         url = f"{EONET_BASE_URL}/events"
@@ -71,7 +97,7 @@ class EonetClient(BaseNASAClient):
                 retryable=False,
             )
 
-        return events
+        return [self._parse_event(raw) for raw in events if isinstance(raw, dict)]
 
     async def get_categories(self) -> list[dict[str, Any]]:
         """Fetch the list of EONET event categories."""

@@ -1,0 +1,32 @@
+{
+  "title": "EONET Events",
+  "description": "Natural events",
+  "events": [
+    {
+      "id": "EONET_123",
+      "title": "Wildfire - California",
+      "closed": null,
+      "categories": [{ "id": "wildfires", "title": "Wildfires" }],
+      "geometry": [
+        {
+          "date": "2024-01-02T00:00:00Z",
+          "type": "Point",
+          "coordinates": [-120.5, 37.2]
+        }
+      ]
+    },
+    {
+      "id": "EONET_456",
+      "title": "Volcano - Etna",
+      "closed": "2024-01-01T00:00:00Z",
+      "categories": [{ "id": "volcanoes", "title": "Volcanoes" }],
+      "geometry": [
+        {
+          "date": "2023-12-28T00:00:00Z",
+          "type": "Point",
+          "coordinates": [15.0, 37.75]
+        }
+      ]
+    }
+  ]
+}

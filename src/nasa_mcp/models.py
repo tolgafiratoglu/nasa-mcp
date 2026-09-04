@@ -1,5 +1,7 @@
 """Pydantic models for NASA MCP tool outputs."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -10,9 +12,17 @@ class APODResult(BaseModel):
     date: str = Field(description="Date of the picture in YYYY-MM-DD format.")
     explanation: str = Field(description="Detailed explanation of the image.")
     url: str = Field(description="URL to the image or video.")
-    hdurl: str | None = Field(default=None, description="URL to the high-definition image, if available.")
-    media_type: str = Field(description="Type of media: 'image' or 'video'.")
-    copyright: str | None = Field(default=None, description="Copyright holder, if applicable.")
+    hdurl: str | None = Field(
+        default=None,
+        description="URL to the high-definition image, if available.",
+    )
+    media_type: Literal["image", "video"] = Field(
+        description="Type of media: 'image' or 'video'."
+    )
+    copyright: str | None = Field(
+        default=None,
+        description="Copyright holder, if applicable.",
+    )
 
 
 class CloseApproach(BaseModel):
@@ -31,7 +41,10 @@ class Asteroid(BaseModel):
     potentially_hazardous: bool = Field(description="NASA PHA classification.")
     diameter_min_m: float = Field(description="Minimum estimated diameter in meters.")
     diameter_max_m: float = Field(description="Maximum estimated diameter in meters.")
-    close_approach: CloseApproach | None = Field(default=None, description="Nearest close approach in the queried range.")
+    close_approach: CloseApproach | None = Field(
+        default=None,
+        description="Nearest close approach in the queried range.",
+    )
 
 
 class AsteroidDetail(BaseModel):
@@ -43,14 +56,22 @@ class AsteroidDetail(BaseModel):
     diameter_min_m: float = Field(description="Minimum estimated diameter in meters.")
     diameter_max_m: float = Field(description="Maximum estimated diameter in meters.")
     absolute_magnitude: float = Field(description="Absolute magnitude (H).")
-    orbital_period_days: float | None = Field(default=None, description="Orbital period in days.")
-    close_approaches: list[CloseApproach] = Field(default_factory=list, description="All known close approaches.")
+    orbital_period_days: float | None = Field(
+        default=None,
+        description="Orbital period in days.",
+    )
+    close_approaches: list[CloseApproach] = Field(
+        default_factory=list,
+        description="All known close approaches.",
+    )
 
 
 class SpaceWeatherEvent(BaseModel):
     """A space weather event from NASA DONKI."""
 
-    event_type: str = Field(description="Event type code: CME, FLR, GST, IPS, MPC, RBE, or HSS.")
+    event_type: str = Field(
+        description="Event type code: CME, FLR, GST, IPS, MPC, RBE, or HSS."
+    )
     event_id: str = Field(description="Unique DONKI event identifier.")
     time: str = Field(description="Event time (ISO 8601 or DONKI format).")
     link: str = Field(default="", description="URL to the DONKI event detail page.")
@@ -70,6 +91,11 @@ class EarthEvent(BaseModel):
 
     id: str = Field(description="EONET event ID.")
     title: str = Field(description="Event title.")
-    categories: list[str] = Field(description="Category titles (e.g. 'Wildfires', 'Volcanoes').")
+    categories: list[str] = Field(
+        description="Category titles (e.g. 'Wildfires', 'Volcanoes')."
+    )
     status: str = Field(description="Event status: 'open' or 'closed'.")
-    geometry: list[EventGeometry] = Field(default_factory=list, description="Geographic points with timestamps.")
+    geometry: list[EventGeometry] = Field(
+        default_factory=list,
+        description="Geographic points with timestamps.",
+    )
