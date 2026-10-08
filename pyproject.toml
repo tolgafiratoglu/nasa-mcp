@@ -23,6 +23,10 @@ api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
 ]
+otel = [
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+]
 
 [build-system]
 requires = ["hatchling"]

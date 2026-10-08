@@ -1,195 +1,171 @@
-# NASA Mission Control MCP
+# NASA AI Mission Control
 
-A portfolio-ready **Model Context Protocol (MCP)** server that turns NASA open data into semantic tools an AI host can discover, call, and chain — not a generic REST wrapper.
+Portfolio showcase: **NASA MCP tools** + **Strands multi-agent orchestration** + **real-time Mission Control UI**.
 
-**One-liner:** Near-Earth asteroids, space weather, Earth natural events, and Astronomy Picture of the Day — structured for LLM tool use.
+**One-liner:** Near-Earth asteroids, space weather, Earth events, and APOD — discovered as MCP tools, delegated across specialist agents, and visualized live.
 
-## Why MCP (not just another API client)
+## Interview pitch
 
-| Approach | What the host gets |
-|----------|-------------------|
-| Generic `call_nasa_api(endpoint, params)` | The model must know NASA URLs and schemas |
-| **This project** | Named tools (`search_asteroids`, `get_space_weather`, …), Pydantic structured output, resources, and a briefing prompt |
+> I wrapped five NASA APIs as semantic MCP tools (not a generic REST proxy). On top, a Mission Commander delegates to three specialists via Strands agents-as-tools over MCP STDIO. A FastAPI/SSE bridge and Next.js console show agent/tool timelines in real time. LLM choice matches my other projects: Gemini or local Qwen — not OpenAI.
 
-The demo story is **search → inspect**: `search_asteroids` returns asteroid `id`s in `structured_content`; the host then calls `get_asteroid(id)` for detail.
+## Architecture
 
-## Architecture (short)
+```mermaid
+graph TB
+    subgraph "Frontend :3100"
+        UI[Chat + Briefing cards]
+        AT[Agent / Tool timeline]
+    end
 
-```text
-MCP host (Cursor / Inspector)
-        │  STDIO
-        ▼
-   MCPServer (tools / resources / prompts)
-        │
-   AppContext lifespan
-        │  shared httpx2.AsyncClient
-        ▼
-   NeoWs · DONKI · EONET · APOD adapters
-        │
-   NASA Open APIs
+    subgraph "API :8100"
+        API[FastAPI + SSE]
+    end
+
+    subgraph "Strands"
+        MC[Mission Commander]
+        AA[Asteroid Analyst]
+        SWA[Space Weather Analyst]
+        EA[Earth Events Analyst]
+    end
+
+    subgraph "MCP STDIO"
+        MCP[nasa_mcp server]
+    end
+
+    UI --> API
+    AT --> API
+    API --> MC
+    MC --> AA & SWA & EA
+    MC --> MCP
+    AA & SWA & EA --> MCP
+    MCP --> NASA[(NASA Open APIs)]
 ```
 
-- **SDK:** MCP Python SDK v2 (`MCPServer`), STDIO only
-- **HTTP:** `httpx2` + retries / rate-limit backoff
-- **Models:** Pydantic return types → `content` + `structured_content`
-- **Observability:** SDK built-in OpenTelemetry (no custom tracing in MVP)
+| Layer | Role |
+|-------|------|
+| `nasa_mcp` | Domain MCP tools, Pydantic structured output, caches |
+| `agents` | Strands Commander + specialists (agents-as-tools) |
+| `api` | HTTP/SSE bridge only (not an MCP proxy) |
+| `frontend` | Chat, briefing cards, live telemetry |
 
-### Two cache layers
+### Why multi-agent?
 
-| Layer | What | Mechanism |
-|-------|------|-----------|
-| **MCP response cache** | `tools/list`, `resources/read` | Protocol `CacheHint` (`ttlMs` / `cacheScope`) for the client |
-| **NASA upstream cache** | Raw NASA JSON | Per-adapter `cachetools.TTLCache` inside the server |
+A single prompt can drive all five tools. Multi-agent still earns its place:
 
-These are independent: protocol hints do not replace application caching, and vice versa.
+1. **Enforced tool whitelists** per specialist (not prompt-only)
+2. **Isolated domain prompts**
+3. **Testable routing expectations** (`agents/routing.py`)
+4. **Observable delegation** in the UI timeline
 
-## Surface
+### Why Strands (not AutoGen)?
 
-### Tools
+- AutoGen is in **maintenance mode**; new Microsoft work targets Agent Framework
+- Strands speaks **MCP STDIO natively** and keeps agents-as-tools simple
+- One orchestration stack is easier to defend in an interview
 
-| Tool | NASA source | Role |
-|------|-------------|------|
-| `search_asteroids` | NeoWs `/feed` | NEOs by close-approach date (max 7-day window); optional PHA filter |
-| `get_asteroid` | NeoWs `/neo/{id}` | Detail for one asteroid (use `id` from search) |
-| `get_space_weather` | DONKI | CME, flares, etc.; `event_type=ALL` fans out and merges newest-first |
-| `get_earth_events` | EONET v3 | Open/closed natural events (wildfires, volcanoes, …) |
-| `get_apod` | APOD | Astronomy Picture of the Day |
+## MCP surface
 
-All tools use `ToolAnnotations(read_only_hint=True)`.
+| Tool | NASA source |
+|------|-------------|
+| `search_asteroids` | NeoWs feed |
+| `get_asteroid` | NeoWs lookup |
+| `get_space_weather` | DONKI (`ALL` fan-out supported) |
+| `get_earth_events` | EONET v3 |
+| `get_apod` | APOD |
 
-### Resources
+Resources: `nasa://glossary`, `nasa://eonet/categories` · Prompt: `daily_mission_briefing`
 
-| URI | Content |
-|-----|---------|
-| `nasa://glossary` | Short NEO / space-weather glossary |
-| `nasa://eonet/categories` | EONET category reference |
-
-### Prompt
-
-| Name | Purpose |
-|------|---------|
-| `daily_mission_briefing` | Guides the host to combine asteroids, `ALL` space weather, Earth events, and APOD |
+**Agents:** Commander may call `get_apod` only among NASA tools; all asteroid work (including id detail) goes through **Asteroid Analyst**.
 
 ## Setup
 
-Requirements: **Python 3.12+**, pip, a virtualenv.
+Python **3.12+**, Node 18+ for the UI.
 
 ```bash
 git clone <this-repo>
 cd nasa-mcp
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-cp .env.example .env        # edit NASA_API_KEY if needed
+source .venv/bin/activate
+pip install -e ".[dev,agents,api,otel]"
+cp .env.example .env
 ```
 
-### API key
+| Variable | Purpose |
+|----------|---------|
+| `NASA_API_KEY` | `DEMO_KEY` or registered key from [api.nasa.gov](https://api.nasa.gov/) |
+| `LLM_PROVIDER` | `gemini` (default) or `qwen` |
+| `GEMINI_API_KEY` / `SECRETS_ENV_PATH` | Same pattern as travel-rag (`~/.config/rag/.env`) |
+| `OLLAMA_BASE_URL` / `QWEN_MODEL` | Local Qwen via Ollama |
+| `OTEL_CONSOLE` | `1` to print OpenTelemetry spans/metrics |
 
-| Key | Limits |
-|-----|--------|
-| `DEMO_KEY` | ~30 req/hour, ~50/day per IP (fine for a quick look; easy to hit) |
-| Registered key | ~1000 req/hour — get one at [api.nasa.gov](https://api.nasa.gov/) |
-
-Export before live runs:
-
-```bash
-export NASA_API_KEY=DEMO_KEY   # or your registered key
-```
-
-The key stays on the server; it is never sent to the MCP client.
+Ports (avoid clash with travel-rag): API **8100**, Next.js **3100**.
 
 ## Run
 
-### MCP Inspector (interactive)
+### MCP Inspector
 
 ```bash
-source .venv/bin/activate
 export NASA_API_KEY=DEMO_KEY
 mcp dev src/nasa_mcp/server.py
 ```
 
-Expect **5 tools**, **2 resources**, **1 prompt**.
-
-### Cursor MCP config
-
-Add something like this to your Cursor MCP settings (paths adjusted to your machine):
-
-```json
-{
-  "mcpServers": {
-    "nasa-mission-control": {
-      "command": "/absolute/path/to/nasa-mcp/.venv/bin/python",
-      "args": ["-m", "nasa_mcp.server"],
-      "env": {
-        "NASA_API_KEY": "DEMO_KEY"
-      }
-    }
-  }
-}
-```
-
-If `-m nasa_mcp.server` is not convenient, point at the file instead:
-
-```json
-{
-  "mcpServers": {
-    "nasa-mission-control": {
-      "command": "/absolute/path/to/nasa-mcp/.venv/bin/python",
-      "args": ["/absolute/path/to/nasa-mcp/src/nasa_mcp/server.py"],
-      "env": {
-        "NASA_API_KEY": "DEMO_KEY"
-      }
-    }
-  }
-}
-```
-
-### Tests (mocked — no live NASA)
+### Multi-agent CLI
 
 ```bash
-source .venv/bin/activate
+export LLM_PROVIDER=gemini
+export OTEL_CONSOLE=1
+python -m agents.cli "Give me a mission briefing for the next 7 days."
+```
+
+### Web console
+
+```bash
+# terminal 1
+python -m api.main
+
+# terminal 2
+cd frontend && npm install && npm run dev
+```
+
+Open [http://localhost:3100](http://localhost:3100).
+
+Full walkthrough: **[DEMO.md](./DEMO.md)**.
+
+## Tests
+
+Automated tests **never** call live NASA or a live LLM:
+
+```bash
 python -m pytest tests/ -q
 ```
 
-## Demo prompts
+Includes MCP/adapter mocks, agent whitelist tests, API SSE mocks, routing policy evaluation, telemetry ingest tests.
 
-Try these in Cursor or Inspector after the server is connected:
+## Observability
 
-- *Give me a mission briefing for the next 7 days.*
-- *Which potentially hazardous asteroids are approaching Earth this week?* then *Tell me more about the closest one.*
-- *Were there any major solar events recently?* (`get_space_weather` with `ALL` or `FLR` / `CME`)
-- *Show active wildfires and volcanoes.*
-- *What's today's astronomy picture? Explain it simply.*
+With `OTEL_CONSOLE=1` and `.[otel]` installed:
 
-### Primary demo (search → inspect)
-
-```text
-User: Which potentially hazardous asteroids are approaching Earth this week?
-Host: search_asteroids(start_date=…, end_date=…, hazardous_only=true)
-
-User: Tell me more about the closest one.
-Host: get_asteroid(id)   ← id from previous structured_content
-```
+- Spans: `agent.*`, `tool.*` (Commander → specialist → tool)
+- Metrics: `nasa.tool.latency_ms` histogram, `nasa.errors` counter
+- Console exporters only (Jaeger/OTLP optional later)
 
 ## Project layout
 
 ```text
-src/nasa_mcp/
-  server.py          # MCPServer, tools, resources, prompts, lifespan
-  models.py          # Pydantic tool outputs
-  validation.py      # Shared validators (e.g. bbox)
-  clients/
-    base.py          # httpx2, cache, retry, NASAError
-    neows.py / donki.py / eonet.py / apod.py
-tests/               # Mocked adapter + MCP contract tests
-spec.md              # Product / protocol spec
-planning.md          # Execution plan
+src/nasa_mcp/     # MCP server + NASA clients
+src/agents/       # Strands multi-agent + routing + tracing
+src/api/          # FastAPI + SSE + Strands hooks bridge
+frontend/         # Next.js Mission Control UI
+tests/            # Mocked unit / contract tests
+ROADMAP.md        # Phased plan
+DEMO.md           # Interview demo script
+spec.md           # Original MCP product spec
 ```
 
-## Out of MVP / future work
+## Out of scope (by design)
 
-Not in this release (by design): Streamable HTTP, MRTR, Redis, auth, EPIC, NASA Media Library, map/React UI, Docker, OTLP exporter, eval dashboard.
+Streamable HTTP transport, AutoGen, Redis/Postgres, auth, Docker, EPIC/Media Library tools, Leaflet map — see `ROADMAP.md` optional list.
 
 ## License / data
 
-NASA API data is public; follow [api.nasa.gov](https://api.nasa.gov/) terms. This repo is a demonstration MCP server for portfolio use.
+NASA API data is public; follow [api.nasa.gov](https://api.nasa.gov/) terms. This repo is a demonstration for portfolio use.

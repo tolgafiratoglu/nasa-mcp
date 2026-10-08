@@ -35,10 +35,16 @@ def main(argv: list[str] | None = None) -> int:
         format="%(levelname)s %(name)s: %(message)s",
     )
 
-    from agents.commander import mission_control
+    from agents.tracing import setup_tracing
 
+    setup_tracing()
+
+    from agents.commander import mission_control
+    from api.telemetry import MissionTelemetry
+
+    telemetry = MissionTelemetry()
     try:
-        with mission_control() as commander:
+        with mission_control(telemetry=telemetry) as commander:
             result = commander(args.prompt)
     except Exception as exc:
         print(f"Mission Control error: {exc}", file=sys.stderr)

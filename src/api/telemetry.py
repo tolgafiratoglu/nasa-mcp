@@ -217,6 +217,8 @@ class MissionTelemetry:
         self._emit: EventEmitter = on_event or (lambda *_a, **_k: None)
         self.accumulator = accumulator or BriefingAccumulator()
         self._started_at: dict[str, float] = {}
+        self._agent_spans: dict[str, Any] = {}
+        self._tool_spans: dict[str, Any] = {}
 
     def attach(self, agent: Any) -> None:
         """Register hooks on a Strands Agent instance."""
@@ -247,8 +249,14 @@ class MissionTelemetry:
         return str(name or "agent")
 
     def _before_invocation(self, event: Any) -> None:
+        from agents.tracing import agent_span
+
         name = self._agent_name(event)
         self._started_at[name] = time.perf_counter()
+        # Manual span enter/exit — hooks are not nested context managers
+        cm = agent_span(name)
+        span = cm.__enter__()
+        self._agent_spans[name] = (cm, span)
         self._emit("agent_start", name, {})
         self._emit("status", name, {"text": f"{name} started"})
 
@@ -256,6 +264,10 @@ class MissionTelemetry:
         name = self._agent_name(event)
         started = self._started_at.pop(name, None)
         duration_ms = int((time.perf_counter() - started) * 1000) if started else None
+        pair = self._agent_spans.pop(name, None)
+        if pair is not None:
+            cm, _span = pair
+            cm.__exit__(None, None, None)
         self._emit(
             "agent_end",
             name,
@@ -263,36 +275,57 @@ class MissionTelemetry:
         )
 
     def _before_tool(self, event: Any) -> None:
+        from agents.tracing import tool_span
+
         tool_name, args = _tool_use_parts(getattr(event, "tool_use", {}))
+        agent = self._agent_name(event)
+        key = f"{agent}:{tool_name}"
+        cm = tool_span(tool_name, agent=agent)
+        span = cm.__enter__()
+        self._tool_spans[key] = (cm, span)
         self._emit(
             "tool_call",
-            self._agent_name(event),
+            agent,
             {"tool": tool_name, "arguments": args},
         )
         self._emit(
             "status",
-            self._agent_name(event),
+            agent,
             {"text": f"Calling {tool_name}"},
         )
 
     def _after_tool(self, event: Any) -> None:
+        from agents.tracing import record_error, record_tool_latency
+
         tool_name, _args = _tool_use_parts(getattr(event, "tool_use", {}))
+        agent = self._agent_name(event)
+        key = f"{agent}:{tool_name}"
         result = getattr(event, "result", None)
         ok = not isinstance(result, Exception)
         summary = _safe_text(_result_to_text(result))
         duration = getattr(event, "duration", None)
         duration_ms = int(duration * 1000) if isinstance(duration, (int, float)) else None
+        pair = self._tool_spans.pop(key, None)
+        if pair is not None:
+            cm, span = pair
+            if span is not None and hasattr(span, "set_attribute"):
+                span.set_attribute("tool.ok", ok)
+                if duration_ms is not None:
+                    span.set_attribute("tool.duration_ms", duration_ms)
+            cm.__exit__(None, None, None)
+        record_tool_latency(tool_name, float(duration_ms) if duration_ms is not None else None, ok=ok)
         if ok:
             self.accumulator.ingest(tool_name, summary)
         else:
+            record_error("tool", tool=tool_name, agent=agent)
             self._emit(
                 "error",
-                self._agent_name(event),
+                agent,
                 {"message": summary, "tool": tool_name},
             )
         self._emit(
             "tool_result",
-            self._agent_name(event),
+            agent,
             {
                 "tool": tool_name,
                 "ok": ok,

@@ -11,6 +11,13 @@ from api.routes import router
 
 logging.basicConfig(level=logging.INFO)
 
+try:
+    from agents.tracing import setup_tracing
+
+    setup_tracing()
+except Exception:  # pragma: no cover - optional observability
+    logging.getLogger(__name__).debug("Tracing setup skipped", exc_info=True)
+
 app = FastAPI(
     title="NASA AI Mission Control API",
     description="HTTP/SSE bridge from the web UI to Strands Mission Commander.",

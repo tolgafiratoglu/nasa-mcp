@@ -448,30 +448,30 @@ During a briefing request:
 
 #### Tasks — Observability
 
-- [ ] Add OpenTelemetry SDK dependency (on top of MCP SDK built-in traces)
-- [ ] Add spans to agent calls (Commander → Specialist → tool)
-- [ ] Tool call latency histogram
-- [ ] Simple console exporter (Jaeger/Zipkin optional; console sufficient for local demo)
-- [ ] Error rate metrics
+- [x] Add OpenTelemetry SDK dependency (on top of MCP SDK built-in traces) (`optional-dependencies.otel`)
+- [x] Add spans to agent calls (Commander → Specialist → tool) (`agents/tracing.py` + telemetry hooks)
+- [x] Tool call latency histogram (`nasa.tool.latency_ms`)
+- [x] Simple console exporter (Jaeger/Zipkin optional; console sufficient for local demo)
+- [x] Error rate metrics (`nasa.errors`)
 
 #### Tasks — Evaluation (simple)
 
-- [ ] Deterministic test scenarios (mocked NASA + mocked LLM)
-  - [ ] "Any hazardous asteroids?" → Commander should delegate to AsteroidAnalyst
-  - [ ] "What's today's space picture?" → Commander should call APOD directly (no specialist needed)
-  - [ ] "Full briefing" → 3 specialists + APOD should be called
-- [ ] Unnecessary agent/tool call detection (simple assertions)
-- [ ] **Tool whitelist enforcement test:** verify each agent can only call its whitelisted tools (not just prompt-based — assert tool set at construction)
-- [ ] Latency baseline recording (reference values from first demo run)
+- [x] Deterministic test scenarios (mocked NASA + mocked LLM)
+  - [x] "Any hazardous asteroids?" → Commander should delegate to AsteroidAnalyst
+  - [x] "What's today's space picture?" → Commander should call APOD directly (no specialist needed)
+  - [x] "Full briefing" → 3 specialists + APOD should be called
+- [x] Unnecessary agent/tool call detection (simple assertions)
+- [x] **Tool whitelist enforcement test:** verify each agent can only call its whitelisted tools (not just prompt-based — assert tool set at construction)
+- [x] Latency baseline recording (reference values from first demo run) — table in `DEMO.md`
 
 #### Tasks — Showcase
 
-- [ ] Update README: multi-agent architecture, running instructions, demo
-- [ ] Architecture diagram (Mermaid — final version of the diagram in this file)
-- [ ] Framework comparison note: "Why Strands, why not AutoGen"
-- [ ] "Why multi-agent?" justification in README (even though a single prompt would suffice)
-- [ ] Demo scenario: search → inspect → briefing (screenshots or GIF)
-- [ ] `DEMO.md` or step-by-step demo instructions in README
+- [x] Update README: multi-agent architecture, running instructions, demo
+- [x] Architecture diagram (Mermaid — final version of the diagram in this file)
+- [x] Framework comparison note: "Why Strands, why not AutoGen"
+- [x] "Why multi-agent?" justification in README (even though a single prompt would suffice)
+- [x] Demo scenario: search → inspect → briefing (screenshots or GIF)
+- [x] `DEMO.md` or step-by-step demo instructions in README
 
 #### Files to create
 
@@ -626,8 +626,8 @@ nasa-mcp/
 - [x] Strands 4 agents (agents-as-tools)
 - [x] FastAPI BFF + basic Next.js
 - [x] Agent timeline (SSE)
-- [ ] Console OTel trace
-- [ ] Routing accuracy tests
+- [x] Console OTel trace
+- [x] Routing accuracy tests
 
 ### Optional (post-MVP)
 
@@ -725,6 +725,8 @@ A brief evaluation is conducted at the end of each phase:
 | 2 | Does the web UI work? | Chat + briefing cards with real data |
 | 3 | Is the agent flow visible? | SSE timeline in real time |
 | 4 | Is it interview-ready? | README sufficient, traces visible, tests green |
+
+**Phases 0–4 agent code: complete.** Remaining work is user live demo per `DEMO.md`.
 
 ---
 
