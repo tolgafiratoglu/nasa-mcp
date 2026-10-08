@@ -288,17 +288,17 @@ Full briefing: Commander calls 3 specialists + adds APOD itself.
 
 #### Tasks — Backend (FastAPI)
 
-- [ ] Create `src/api/` directory structure
-- [ ] Add FastAPI dependencies to `pyproject.toml`
-- [ ] `POST /api/chat` — user message → returns `{ request_id }` (202 Accepted), starts Commander in background task
-- [ ] `GET /api/chat/{id}/events` — SSE stream; reads from buffered event queue (includes past events so late subscribers catch up)
-- [ ] Design event contract (extended in Phase 3 but interface defined now)
-- [ ] Define SSE lifecycle: background task writes events → queue → SSE reader drains; final `message` event carries the completed response
-- [ ] FastAPI runs on port **8100** (travel-rag uses 8000)
-- [ ] Request/response Pydantic models
-- [ ] CORS configuration (Next.js dev server)
-- [ ] Error handling (NASA timeout → meaningful user message)
-- [ ] Backend tests: mocked endpoint tests with `httpx.AsyncClient`
+- [x] Create `src/api/` directory structure
+- [x] Add FastAPI dependencies to `pyproject.toml` (`optional-dependencies.api`)
+- [x] `POST /api/chat` — user message → returns `{ request_id }` (202 Accepted), starts Commander in background task
+- [x] `GET /api/chat/{id}/events` — SSE stream; reads from buffered event queue (includes past events so late subscribers catch up)
+- [x] Design event contract (extended in Phase 3 but interface defined now)
+- [x] Define SSE lifecycle: background task writes events → queue → SSE reader drains; final `message` event carries the completed response
+- [x] FastAPI runs on port **8100** (travel-rag uses 8000)
+- [x] Request/response Pydantic models
+- [x] CORS configuration (Next.js dev server)
+- [x] Error handling (NASA timeout → meaningful user message)
+- [x] Backend tests: mocked endpoint tests with `httpx.AsyncClient` (`tests/test_api.py`)
 
 #### Event contract (shared across all phases)
 
@@ -340,18 +340,18 @@ Client                          Server
 
 #### Tasks — Frontend (Next.js)
 
-- [ ] `frontend/` directory structure (Next.js + TypeScript + Tailwind, dev port **3100** — travel-rag uses 3000)
-- [ ] Chat component: send message, display response
-- [ ] Conversation history (in-memory, resets on reload — no DB)
-- [ ] Briefing cards:
-  - [ ] Asteroid list (id, name, hazard status, miss distance)
-  - [ ] Space Weather summary (event type, date, count)
-  - [ ] Earth Events list (title, category, status)
-  - [ ] APOD image (image/video + explanation)
-- [ ] Card data parsed from `structured_content` (NASA JSON is never parsed in FE)
-- [ ] Dark theme / mission control aesthetic
-- [ ] TypeScript types: mirror of Pydantic models (manual; auto-codegen unnecessary)
-- [ ] Loading states and error handling
+- [x] `frontend/` directory structure (Next.js + TypeScript + Tailwind, dev port **3100** — travel-rag uses 3000)
+- [x] Chat component: send message, display response
+- [x] Conversation history (in-memory, resets on reload — no DB)
+- [x] Briefing cards:
+  - [x] Asteroid list (id, name, hazard status, miss distance)
+  - [x] Space Weather summary (event type, date, count)
+  - [x] Earth Events list (title, category, status)
+  - [x] APOD image (image/video + explanation)
+- [x] Card data parsed from API `briefing` payload (NASA JSON is never parsed in FE; Phase 3 fills cards from tool events)
+- [x] Dark theme / mission control aesthetic
+- [x] TypeScript types: mirror of Pydantic models (manual; auto-codegen unnecessary)
+- [x] Loading states and error handling
 
 #### Files to create
 

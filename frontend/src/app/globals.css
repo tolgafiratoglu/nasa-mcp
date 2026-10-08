@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-mc-bg text-mc-text font-display antialiased min-h-screen;
+  background-image:
+    radial-gradient(ellipse at top, rgba(61, 214, 198, 0.08), transparent 50%),
+    linear-gradient(180deg, #0b1020 0%, #070b16 100%);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #243056 transparent;
+}

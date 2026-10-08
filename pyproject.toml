@@ -14,9 +14,14 @@ dependencies = [
 dev = [
     "pytest>=8",
     "pytest-asyncio",
+    "httpx>=0.27",
 ]
 agents = [
     "strands-agents>=1.0",
+]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
 ]
 
 [build-system]
@@ -24,7 +29,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/nasa_mcp", "src/agents"]
+packages = ["src/nasa_mcp", "src/agents", "src/api"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
