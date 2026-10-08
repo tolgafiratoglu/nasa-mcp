@@ -40,12 +40,13 @@ def main(argv: list[str] | None = None) -> int:
     setup_tracing()
 
     from agents.commander import mission_control
+    from agents.dates import clock_context
     from api.telemetry import MissionTelemetry
 
     telemetry = MissionTelemetry()
     try:
         with mission_control(telemetry=telemetry) as commander:
-            result = commander(args.prompt)
+            result = commander(f"{clock_context()}\n\n{args.prompt}")
     except Exception as exc:
         print(f"Mission Control error: {exc}", file=sys.stderr)
         return 1

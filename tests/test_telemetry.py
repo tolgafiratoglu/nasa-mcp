@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from api.telemetry import BriefingAccumulator, _tool_use_parts
+from api.telemetry import BriefingAccumulator, MissionTelemetry, _safe_text, _tool_use_parts
 
 
 def test_tool_use_parts_from_dict():
@@ -35,3 +35,43 @@ def test_briefing_accumulator_apod():
     )
     assert acc.payload.apod is not None
     assert acc.payload.apod.title == "Nebula"
+
+
+def test_briefing_accumulator_long_apod_explanation():
+    """UI summaries truncate; ingest must still accept full JSON."""
+    explanation = "word " * 200
+    payload = (
+        '{"title": "Long", "date": "2024-01-01", '
+        f'"explanation": "{explanation.strip()}", '
+        '"url": "https://example.com/a.jpg", "media_type": "image"}'
+    )
+    assert len(payload) > 600
+    assert len(_safe_text(payload)) <= 600
+
+    acc = BriefingAccumulator()
+    acc.ingest("get_apod", payload)
+    assert acc.payload.apod is not None
+    assert acc.payload.apod.title == "Long"
+
+
+def test_after_tool_ingests_full_text_not_truncated_summary():
+    events: list[tuple] = []
+    acc = BriefingAccumulator()
+    telemetry = MissionTelemetry(on_event=lambda *a, **k: events.append(a), accumulator=acc)
+
+    explanation = "detail " * 150
+    full = (
+        '{"title": "Full", "date": "2024-01-01", '
+        f'"explanation": "{explanation.strip()}", '
+        '"url": "https://example.com/a.jpg", "media_type": "image"}'
+    )
+
+    class _FakeEvent:
+        agent = type("A", (), {"name": "mission_commander"})()
+        tool_use = {"name": "get_apod", "input": {}}
+        result = {"content": [{"text": full}]}
+        duration = 0.01
+
+    telemetry._after_tool(_FakeEvent())
+    assert acc.payload.apod is not None
+    assert acc.payload.apod.title == "Full"

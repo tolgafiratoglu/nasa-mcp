@@ -1,0 +1,57 @@
+"""LLM settings — same contract as travel-rag (Gemini / Qwen via Ollama)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Literal
+
+from dotenv import dotenv_values
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    llm_provider: Literal["gemini", "qwen"] = "gemini"
+    gemini_model: str = "gemini-2.5-flash-lite"
+    secrets_env_path: str = "~/.config/rag/.env"
+    gemini_api_key: str = Field(default="", validation_alias="GEMINI_API_KEY")
+
+    # Local Ollama (host default for nasa-mcp; travel-rag Docker uses http://ollama:11434)
+    ollama_base_url: str = "http://localhost:11434"
+    qwen_llm: Literal["1b", "8b"] = "1b"
+    qwen8b: str = "qwen3:8b"
+    qwen1b: str = "qwen3:1.7b-q4_K_M"
+
+    nasa_api_key: str = Field(default="DEMO_KEY", validation_alias="NASA_API_KEY")
+
+    @field_validator("llm_provider", mode="before")
+    @classmethod
+    def _normalize_llm_provider(cls, value: str) -> str:
+        if value == "ollama":
+            return "qwen"
+        return value
+
+    @property
+    def qwen_model(self) -> str:
+        return self.qwen1b if self.qwen_llm == "1b" else self.qwen8b
+
+
+def _load_gemini_api_key(settings: Settings) -> Settings:
+    if settings.gemini_api_key:
+        return settings
+    path = Path(settings.secrets_env_path).expanduser()
+    if not path.is_file():
+        return settings
+    key = (dotenv_values(path).get("GEMINI_API_KEY") or "").strip()
+    if key:
+        return settings.model_copy(update={"gemini_api_key": key})
+    return settings
+
+
+settings = _load_gemini_api_key(Settings())

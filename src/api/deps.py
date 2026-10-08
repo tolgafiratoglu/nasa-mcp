@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from agents.commander import mission_control
+from agents.dates import clock_context
 from api.models import BriefingPayload
 from api.telemetry import BriefingAccumulator, EventEmitter, MissionTelemetry
 
@@ -41,6 +42,7 @@ def run_commander(
 
     accumulator = BriefingAccumulator()
     telemetry = MissionTelemetry(on_event=on_event, accumulator=accumulator)
+    augmented = f"{clock_context()}\n\n{message}"
     with mission_control(telemetry=telemetry) as commander:
-        result = commander(message)
+        result = commander(augmented)
     return str(result), accumulator.payload.model_dump()

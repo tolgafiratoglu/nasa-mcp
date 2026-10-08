@@ -278,13 +278,21 @@ def eonet_categories() -> str:
 @mcp.prompt(title="Daily Mission Briefing")
 def daily_mission_briefing() -> str:
     """Orchestrate a multi-tool NASA Mission Control briefing for the next 7 days."""
+    from datetime import date, timedelta
+
+    start = date.today()
+    end = start + timedelta(days=6)
     return (
-        "Create today's NASA Mission Control Briefing for the next 7 days.\n\n"
-        "1. Call search_asteroids for this week with hazardous_only=true. "
+        f"Create today's NASA Mission Control Briefing "
+        f"({start.isoformat()} to {end.isoformat()}).\n\n"
+        f"1. Call search_asteroids with start_date={start.isoformat()}, "
+        f"end_date={end.isoformat()}, hazardous_only=true. "
         "For the most notable approach, call get_asteroid with its id.\n"
-        "2. Call get_space_weather with event_type=ALL for a recent date range.\n"
-        "3. Call get_earth_events for currently open major events.\n"
-        "4. Call get_apod for today's astronomy picture.\n\n"
+        f"2. Call get_space_weather with event_type=ALL, "
+        f"start_date={start.isoformat()}, end_date={end.isoformat()}.\n"
+        "3. Call get_earth_events with status=open and days=7.\n"
+        f"4. Call get_apod for today's astronomy picture (date={start.isoformat()}).\n\n"
+        "Never ask the user for dates — use the dates above. "
         "Present a structured mission-control briefing. "
         "Do not claim a PHA implies an impact is predicted."
     )

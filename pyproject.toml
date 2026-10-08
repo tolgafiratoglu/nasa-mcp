@@ -18,10 +18,17 @@ dev = [
 ]
 agents = [
     "strands-agents>=1.0",
+    "google-genai>=1.0",
+    "pydantic-settings>=2.0",
+    "python-dotenv>=1.0",
+    # websockets 17 removed OP_BINARY; breaks MCP/Strands imports
+    "websockets>=13,<17",
 ]
 api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    # uvicorn[standard] otherwise pulls websockets 17+
+    "websockets>=13,<17",
 ]
 otel = [
     "opentelemetry-api>=1.27",

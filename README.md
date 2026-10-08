@@ -93,9 +93,11 @@ cp .env.example .env
 | Variable | Purpose |
 |----------|---------|
 | `NASA_API_KEY` | `DEMO_KEY` or registered key from [api.nasa.gov](https://api.nasa.gov/) |
-| `LLM_PROVIDER` | `gemini` (default) or `qwen` |
-| `GEMINI_API_KEY` / `SECRETS_ENV_PATH` | Same pattern as travel-rag (`~/.config/rag/.env`) |
-| `OLLAMA_BASE_URL` / `QWEN_MODEL` | Local Qwen via Ollama |
+| `LLM_PROVIDER` | `gemini` (default) or `qwen` — same as travel-rag |
+| `GEMINI_MODEL` | Default `gemini-2.5-flash-lite` |
+| `GEMINI_API_KEY` / `SECRETS_ENV_PATH` | Same as travel-rag (`~/.config/rag/.env`) |
+| `QWEN_LLM` / `QWEN1B` / `QWEN8B` | Same as travel-rag (`1b` → `qwen3:1.7b-q4_K_M`) |
+| `OLLAMA_BASE_URL` | Default `http://localhost:11434` |
 | `OTEL_CONSOLE` | `1` to print OpenTelemetry spans/metrics |
 
 Ports (avoid clash with travel-rag): API **8100**, Next.js **3100**.

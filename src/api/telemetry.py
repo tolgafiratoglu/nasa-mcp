@@ -302,7 +302,9 @@ class MissionTelemetry:
         key = f"{agent}:{tool_name}"
         result = getattr(event, "result", None)
         ok = not isinstance(result, Exception)
-        summary = _safe_text(_result_to_text(result))
+        # Ingest full text (APOD explanations / asteroid lists exceed UI summary limit).
+        full_text = _result_to_text(result)
+        summary = _safe_text(full_text)
         duration = getattr(event, "duration", None)
         duration_ms = int(duration * 1000) if isinstance(duration, (int, float)) else None
         pair = self._tool_spans.pop(key, None)
@@ -315,7 +317,7 @@ class MissionTelemetry:
             cm.__exit__(None, None, None)
         record_tool_latency(tool_name, float(duration_ms) if duration_ms is not None else None, ok=ok)
         if ok:
-            self.accumulator.ingest(tool_name, summary)
+            self.accumulator.ingest(tool_name, full_text)
         else:
             record_error("tool", tool=tool_name, agent=agent)
             self._emit(
