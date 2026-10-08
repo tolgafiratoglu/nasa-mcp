@@ -46,10 +46,13 @@ async def test_chat_accepted_and_sse_message():
 
         types = [e.get("type") for e in events]
         assert "status" in types
+        assert "agent_start" in types
+        assert "agent_end" in types
         assert "message" in types
         message = next(e for e in events if e["type"] == "message")
         assert "Mock briefing" in message["data"]["text"]
         assert "briefing" in message["data"]
+        assert "duration_ms" in message["data"]
 
 
 @pytest.mark.asyncio

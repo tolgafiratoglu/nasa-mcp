@@ -398,25 +398,25 @@ frontend/
 
 #### Tasks — Backend
 
-- [ ] Convert Strands agent callbacks/hooks into `AgentEvent`s
-- [ ] Populate SSE endpoint with real event stream (`GET /api/chat/{id}/events`)
-- [ ] Calculate latency on each agent_start / agent_end event
-- [ ] Emit tool call start and result events
-- [ ] Include error events in the stream
+- [x] Convert Strands agent callbacks/hooks into `AgentEvent`s (`api/telemetry.py`)
+- [x] Populate SSE endpoint with real event stream (`GET /api/chat/{id}/events`)
+- [x] Calculate latency on each agent_start / agent_end event
+- [x] Emit tool call start and result events
+- [x] Include error events in the stream
 
 #### Tasks — Frontend
 
-- [ ] Agent Timeline component:
-  - [ ] Which agent started/finished when (duration indicator)
-  - [ ] Active agent highlighting
-- [ ] Tool Call Monitor component:
-  - [ ] Called tool name and arguments
-  - [ ] Tool result summary
-  - [ ] Success/error status badge
-- [ ] Execution Timeline:
-  - [ ] Chronological event flow (agent_start → tool_call → tool_result → agent_end)
-  - [ ] Total execution time
-- [ ] SSE connection management (disconnect handling, reconnection)
+- [x] Agent Timeline component:
+  - [x] Which agent started/finished when (duration indicator)
+  - [x] Active agent highlighting
+- [x] Tool Call Monitor component:
+  - [x] Called tool name and arguments
+  - [x] Tool result summary
+  - [x] Success/error status badge
+- [x] Execution Timeline:
+  - [x] Chronological event flow (agent_start → tool_call → tool_result → agent_end)
+  - [x] Total execution time
+- [x] SSE connection management (disconnect handling, reconnection)
 
 #### Files to create
 
@@ -623,9 +623,9 @@ nasa-mcp/
 ### MVP (sufficient for interview)
 
 - [x] MCP server (5 tools, 2 resources, 1 prompt)
-- [ ] Strands 4 agents (agents-as-tools)
-- [ ] FastAPI BFF + basic Next.js
-- [ ] Agent timeline (SSE)
+- [x] Strands 4 agents (agents-as-tools)
+- [x] FastAPI BFF + basic Next.js
+- [x] Agent timeline (SSE)
 - [ ] Console OTel trace
 - [ ] Routing accuracy tests
 

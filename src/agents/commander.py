@@ -42,13 +42,23 @@ If a specialist reports an error, summarize the failure without crashing the bri
 """
 
 
-def build_commander(model: Any, mcp_tools: list[Any]) -> Agent:
+def build_commander(
+    model: Any,
+    mcp_tools: list[Any],
+    *,
+    telemetry: Any | None = None,
+) -> Agent:
     """Build Commander with specialist agents-as-tools + get_apod only."""
     apod_tools = filter_tools_by_name(mcp_tools, COMMANDER_MCP_TOOLS)
 
     asteroid = build_asteroid_analyst(model, mcp_tools)
     weather = build_weather_analyst(model, mcp_tools)
     earth = build_earth_analyst(model, mcp_tools)
+
+    if telemetry is not None:
+        telemetry.attach(asteroid)
+        telemetry.attach(weather)
+        telemetry.attach(earth)
 
     specialist_tools = [
         asteroid.as_tool(
@@ -74,20 +84,27 @@ def build_commander(model: Any, mcp_tools: list[Any]) -> Agent:
         ),
     ]
 
-    return Agent(
+    commander = Agent(
         name="mission_commander",
         description="Orchestrates NASA Mission Control specialists and synthesizes briefings.",
         model=model,
         system_prompt=SYSTEM_PROMPT,
         tools=[*specialist_tools, *apod_tools],
     )
+    if telemetry is not None:
+        telemetry.attach(commander)
+    return commander
 
 
 @contextmanager
-def mission_control(model: Any | None = None) -> Iterator[Agent]:
+def mission_control(
+    model: Any | None = None,
+    *,
+    telemetry: Any | None = None,
+) -> Iterator[Agent]:
     """Open MCP STDIO session and yield a ready Mission Commander agent."""
     resolved = model or build_model()
     mcp = create_nasa_mcp_client()
     with mcp:
         tools = mcp.list_tools_sync()
-        yield build_commander(resolved, tools)
+        yield build_commander(resolved, tools, telemetry=telemetry)

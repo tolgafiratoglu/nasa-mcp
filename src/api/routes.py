@@ -5,14 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from api.deps import run_commander
 from api.events import EventBuffer, event_store
-from api.models import AgentEvent, BriefingPayload, ChatAccepted, ChatRequest
+from api.models import AgentEvent, ChatAccepted, ChatRequest
 
 logger = logging.getLogger(__name__)
 
@@ -36,18 +38,47 @@ async def _publish(
     )
 
 
+def _threadsafe_emitter(
+    buffer: EventBuffer,
+    loop: asyncio.AbstractEventLoop,
+) -> Any:
+    def emit(event_type: str, agent: str, data: dict[str, Any]) -> None:
+        event = AgentEvent(
+            type=event_type,  # type: ignore[arg-type]
+            agent=agent,
+            data=data or {},
+            correlation_id=buffer.correlation_id,
+        )
+        fut = asyncio.run_coroutine_threadsafe(buffer.publish(event), loop)
+        try:
+            fut.result(timeout=10)
+        except Exception:
+            logger.exception("Failed to publish telemetry event %s", event_type)
+
+    return emit
+
+
 async def _run_chat_job(buffer: EventBuffer, message: str) -> None:
-    await _publish(buffer, "status", data={"text": "Mission Commander starting"})
-    await _publish(buffer, "agent_start", data={})
+    await _publish(
+        buffer,
+        "status",
+        data={"text": "Mission Commander starting"},
+    )
+    started = time.perf_counter()
+    loop = asyncio.get_running_loop()
+    on_event = _threadsafe_emitter(buffer, loop)
     try:
-        text = await asyncio.to_thread(run_commander, message)
-        briefing = BriefingPayload().model_dump()
+        text, briefing = await asyncio.to_thread(run_commander, message, on_event)
+        total_ms = int((time.perf_counter() - started) * 1000)
         await _publish(
             buffer,
             "message",
-            data={"text": text, "briefing": briefing},
+            data={
+                "text": text,
+                "briefing": briefing,
+                "duration_ms": total_ms,
+            },
         )
-        await _publish(buffer, "agent_end", data={"ok": True})
     except Exception as exc:
         logger.exception("Chat job failed for %s", buffer.correlation_id)
         await _publish(
@@ -60,7 +91,6 @@ async def _run_chat_job(buffer: EventBuffer, message: str) -> None:
                 )
             },
         )
-        await _publish(buffer, "agent_end", data={"ok": False})
     finally:
         await buffer.complete()
 

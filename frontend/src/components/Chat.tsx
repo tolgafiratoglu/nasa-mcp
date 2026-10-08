@@ -1,16 +1,16 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import {
-  briefingFromEventData,
-  startChat,
-  subscribeChatEvents,
-} from "@/lib/api";
+import { useEventStream } from "@/hooks/useEventStream";
+import { briefingFromEventData } from "@/lib/api";
 import type { Asteroid, Briefing, ChatMessage } from "@/lib/types";
+import { AgentTimeline } from "./AgentTimeline";
 import { ApodCard } from "./ApodCard";
 import { AsteroidList } from "./AsteroidList";
 import { EarthEvents } from "./EarthEvents";
+import { ExecutionTimeline } from "./ExecutionTimeline";
+import { ToolCallMonitor } from "./ToolCallMonitor";
 import { WeatherSummary } from "./WeatherSummary";
 
 const emptyBriefing = (): Briefing => ({
@@ -23,111 +23,58 @@ const emptyBriefing = (): Briefing => ({
 export function Chat() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [status, setStatus] = useState<string>("");
-  const [busy, setBusy] = useState(false);
   const [briefing, setBriefing] = useState<Briefing>(emptyBriefing());
-  const unsubRef = useRef<(() => void) | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const stream = useEventStream();
 
-  const send = useCallback(async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || busy) return;
+  useEffect(() => {
+    if (!stream.error || !pendingId) return;
+    const err = stream.error;
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === pendingId && (m.pending || !m.text)
+          ? { ...m, pending: false, error: err, text: err }
+          : m,
+      ),
+    );
+    setPendingId(null);
+  }, [stream.error, pendingId]);
 
-    unsubRef.current?.();
-    setBusy(true);
-    setStatus("Connecting…");
-    setInput("");
+  const send = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || stream.busy) return;
 
-    const userMsg: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      text: trimmed,
-    };
-    const pendingId = crypto.randomUUID();
-    setMessages((prev) => [
-      ...prev,
-      userMsg,
-      { id: pendingId, role: "assistant", text: "", pending: true },
-    ]);
+      setInput("");
+      setBriefing(emptyBriefing());
+      const userMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        text: trimmed,
+      };
+      const assistantId = crypto.randomUUID();
+      setPendingId(assistantId);
+      setMessages((prev) => [
+        ...prev,
+        userMsg,
+        { id: assistantId, role: "assistant", text: "", pending: true },
+      ]);
 
-    try {
-      const requestId = await startChat(trimmed);
-      setStatus(`Request ${requestId.slice(0, 8)}…`);
-
-      unsubRef.current = subscribeChatEvents(requestId, {
-        onEvent: (event) => {
-          if (event.type === "status") {
-            const t = String(event.data.text ?? "");
-            if (t) setStatus(t);
-          }
-          if (event.type === "error") {
-            const err = String(event.data.message ?? "Unknown error");
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === pendingId
-                  ? { ...m, pending: false, error: err, text: err }
-                  : m,
-              ),
-            );
-            setStatus("Error");
-          }
-          if (event.type === "message") {
-            const reply = String(event.data.text ?? "");
-            const cards = briefingFromEventData(event.data);
-            if (cards) setBriefing(cards);
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === pendingId
-                  ? {
-                      ...m,
-                      pending: false,
-                      text: reply,
-                      briefing: cards,
-                    }
-                  : m,
-              ),
-            );
-            setStatus("Complete");
-          }
-        },
-        onDone: () => {
-          setBusy(false);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === pendingId && m.pending
-                ? {
-                    ...m,
-                    pending: false,
-                    text: m.text || "No response received.",
-                  }
-                : m,
-            ),
-          );
-        },
-        onError: (err) => {
-          setBusy(false);
-          setStatus(err.message);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === pendingId
-                ? { ...m, pending: false, error: err.message, text: err.message }
-                : m,
-            ),
-          );
-        },
+      await stream.run(trimmed, (reply, data) => {
+        const cards = briefingFromEventData(data);
+        if (cards) setBriefing(cards);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, pending: false, text: reply, briefing: cards }
+              : m,
+          ),
+        );
+        setPendingId(null);
       });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setBusy(false);
-      setStatus(message);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === pendingId
-            ? { ...m, pending: false, error: message, text: message }
-            : m,
-        ),
-      );
-    }
-  }, [busy]);
+    },
+    [stream],
+  );
 
   const onAsteroidSelect = (asteroid: Asteroid) => {
     void send(
@@ -136,7 +83,16 @@ export function Chat() {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,0.95fr)]">
+      <div className="space-y-4">
+        <AgentTimeline events={stream.events} />
+        <ToolCallMonitor events={stream.events} />
+        <ExecutionTimeline
+          events={stream.events}
+          totalDurationMs={stream.totalDurationMs}
+        />
+      </div>
+
       <div className="flex min-h-[70vh] flex-col rounded-xl border border-mc-border bg-mc-panel/60">
         <header className="border-b border-mc-border px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-mc-accent">
@@ -144,7 +100,7 @@ export function Chat() {
           </p>
           <h1 className="text-xl font-semibold">NASA AI Console</h1>
           <p className="text-xs text-mc-muted mt-1">
-            {status || "Ready — ask for a briefing or asteroid search."}
+            {stream.status || "Ready — ask for a briefing or asteroid search."}
           </p>
         </header>
 
@@ -185,13 +141,13 @@ export function Chat() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            disabled={busy}
+            disabled={stream.busy}
             placeholder="Ask Mission Commander…"
             className="flex-1 rounded-md border border-mc-border bg-mc-bg px-3 py-2 text-sm outline-none focus:border-mc-accent"
           />
           <button
             type="submit"
-            disabled={busy || !input.trim()}
+            disabled={stream.busy || !input.trim()}
             className="rounded-md bg-mc-accent px-4 py-2 text-sm font-semibold text-mc-bg disabled:opacity-40"
           >
             Send
@@ -207,11 +163,6 @@ export function Chat() {
         <WeatherSummary events={briefing.space_weather} />
         <EarthEvents events={briefing.earth_events} />
         <ApodCard apod={briefing.apod} />
-        <p className="text-xs text-mc-muted">
-          Card panels are filled from API <code className="font-mono">briefing</code>{" "}
-          payloads (Phase 3 will attach structured tool results). Text answers
-          come from the Commander via SSE.
-        </p>
       </div>
     </div>
   );
