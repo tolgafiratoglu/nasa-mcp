@@ -182,13 +182,13 @@ Each phase is independently testable and demoable.
 
 #### Tasks
 
-- [ ] `python -m pytest tests/ -q` — 51 tests green
-- [ ] `mcp dev src/nasa_mcp/server.py` — Inspector shows 5 tools, 2 resources, 1 prompt
-- [ ] `get_apod` returns real data
-- [ ] `get_space_weather` works with `ALL` and single types
-- [ ] `get_earth_events` lists open events
-- [ ] `search_asteroids` → `get_asteroid(id)` chain works (search → inspect)
-- [ ] Cursor MCP config connection works
+- [x] `python -m pytest tests/ -q` — 51 tests green *(Agent: 2026-10-08)*
+- [ ] `mcp dev src/nasa_mcp/server.py` — Inspector shows 5 tools, 2 resources, 1 prompt *(User — live)*
+- [ ] `get_apod` returns real data *(User — live)*
+- [ ] `get_space_weather` works with `ALL` and single types *(User — live)*
+- [ ] `get_earth_events` lists open events *(User — live)*
+- [ ] `search_asteroids` → `get_asteroid(id)` chain works (search → inspect) *(User — live)*
+- [ ] Cursor MCP config connection works *(User — live)*
 
 #### Acceptance criteria
 
@@ -197,7 +197,7 @@ tools and produces a structured briefing.
 
 #### File changes
 
-None. Validation only.
+None. Validation only. Agent runs mocked pytest only; live NASA / Inspector / Cursor are user-owned.
 
 ---
 
@@ -228,20 +228,20 @@ None. Validation only.
 
 #### Tasks
 
-- [ ] Create `src/agents/` directory structure
-- [ ] Add Strands SDK dependency to `pyproject.toml`
-- [ ] Configure LLM provider: Gemini (`gemini-2.5-flash-lite`) or Qwen (`qwen3:1.7b-q4_K_M` via Ollama)
-- [ ] Define MCP server config (Strands `mcp_server_config` or `MCPClient`)
-- [ ] `AsteroidAnalyst` agent: system prompt + `search_asteroids` / `get_asteroid`
-- [ ] `SpaceWeatherAnalyst` agent: system prompt + `get_space_weather`
-- [ ] `EarthEventsAnalyst` agent: system prompt + `get_earth_events`
-- [ ] `MissionCommander` agent: system prompt + specialists as tools + `get_apod`
-- [ ] Terminal demo script: `python -m agents.cli "Give me a mission briefing"`
-- [ ] Verify specialists work independently (each testable in isolation)
-- [ ] Verify Commander → specialist delegation chain
-- [ ] Timeout and error handling (NASA errors must not crash agents)
-- [ ] Unnecessary tool call check (simple query should not call all 5 tools)
-- [ ] Agent tests: delegation verification with mocked LLM responses
+- [x] Create `src/agents/` directory structure
+- [x] Add Strands SDK dependency to `pyproject.toml` (`optional-dependencies.agents`)
+- [x] Configure LLM provider: Gemini (`gemini-2.5-flash-lite`) or Qwen (`qwen3:1.7b-q4_K_M` via Ollama)
+- [x] Define MCP server config (Strands `MCPClient` + STDIO → `python -m nasa_mcp.server`)
+- [x] `AsteroidAnalyst` agent: system prompt + `search_asteroids` / `get_asteroid`
+- [x] `SpaceWeatherAnalyst` agent: system prompt + `get_space_weather`
+- [x] `EarthEventsAnalyst` agent: system prompt + `get_earth_events`
+- [x] `MissionCommander` agent: system prompt + specialists as tools + `get_apod`
+- [x] Terminal demo script: `python -m agents.cli "Give me a mission briefing"`
+- [ ] Verify specialists work independently (each testable in isolation) *(User)*
+- [ ] Verify Commander → specialist delegation chain *(User)*
+- [x] Timeout and error handling (NASA errors must not crash agents) *(CLI catches; specialists return grounded failures)*
+- [ ] Unnecessary tool call check (simple query should not call all 5 tools) *(User / later eval)*
+- [x] Agent tests: whitelist / filter unit tests in `tests/test_agents.py` (no live LLM)
 
 #### Files to create
 

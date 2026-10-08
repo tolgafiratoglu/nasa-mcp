@@ -1,61 +1,14 @@
----
-description: NASA MCP — write code; at most one mocked pytest per section; live/E2E is for the user
-alwaysApply: true
----
+Claude için çalışma talimatı:
+1. Bir kod talep ettiğimde sadece anlaştığımız kodu yaz. 
+2. Aksini söylememişsem kodu test etmeye çalışma.
+3. Klasör oluşturma gibi eylemler dışında terminalden birşey çalıştırma.
+4. Tamamlanan işlerden sonra eğer test etmem gerekirse POSTMAN'e import etmem için curl ile import kodu yaz.
+5. bir kod yazacağın zaman kod tekrarı yapmamaya özen göster. Mesela bir veritabanına ya da benzeri bir araca bağlanacaksın ya da query'ler göndereceksin. Eğer servisler katmanlar zaten yazıldıysa önce halihazırda yazılmış olan servis metodlarını bul, mümkünse bunları kullan.
+6. Bu değişiklik için yazabileceğim commit mesajını da ekle.
 
-# NASA Mission Control MCP — Working Rules
+Cevabını mümkün olduğunca şu sırayla ver:
 
-## When writing code
-
-1. When code is requested, **write only what we agreed on**.
-2. **You may write mocked unit/contract tests** (`pytest`, `httpx2.MockTransport`, `Client(mcp)`).
-3. **Test run limit:** At the end of a section (or requested task), run **at most one** mocked `pytest -q`.
-   - On failure, fix the code; **do not re-run pytest** — leave the command for the user.
-   - No fail-fix-retry loops.
-4. **Do not:**
-   - call live NASA APIs
-   - launch MCP Inspector
-   - consume NASA API quota
-   - change external services
-   - run unnecessary or repeated terminal commands
-5. Do not run unnecessary terminal commands except creating folders when needed.
-6. Avoid duplication. Before adding a client/tool, check `BaseNASAClient`, existing clients, and `models.py`.
-7. Stay within `spec.md` and `planning.md`. Do not add out-of-MVP features (EPIC, Media Library, frontend, Redis, Streamable HTTP, MRTR).
-8. Follow SOLID principles.
-
-## After finishing work, reply in this order
-
-### 1. Changed / created files
-
-Cite code with **linkable** path + line range:
-
-```12:34:src/nasa_mcp/server.py
-# relevant code
-```
-
-### 2. Verification commands
-
-Mocked tests: Agent may run **at most once**. Live/E2E and re-runs are for the **user**:
-
-```bash
-# Dependencies
-source .venv/bin/activate
-pip install -e ".[dev]"
-
-# Mocked tests (Agent: at most one per section; user as often as needed)
-python -m pytest tests/test_clients.py -q
-
-# MCP Inspector (user runs this)
-mcp dev src/nasa_mcp/server.py
-```
-
-### 3. MCP / tool verification
-
-Give example tool arguments:
-
-```text
-Tool: search_asteroids
-Args: { "start_date": "2024-01-01", "end_date": "2024-01-07", "hazardous_only": true }
-```
-
-Remind about `.env` / `NASA_API_KEY` when needed (`DEMO_KEY` or a registered key).
+- Değiştirilen / oluşturulan dosyalar ve Kod blokları
+- Kod bloklarını verirken koddaki yerine linklenebilecek şekilde yaz.
+- Benim çalıştırmam gereken komutlar
+- REST API varsa Postman için cURL örnekleri
